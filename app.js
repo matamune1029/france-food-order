@@ -221,9 +221,19 @@ function closeReceiptModal() {
 }
 
 // Admin Toggle & Real-time Orders
+// 後台切換（帶密碼保護）
 function toggleMode() {
   const adminView = document.getElementById('admin-view');
   const customerView = document.getElementById('customer-view');
+
+  // 如果當前在顧客畫面，要進入後台时驗證密碼
+  if (adminView.classList.contains('hidden')) {
+    const password = prompt("Veuillez entrer le mot de passe Admin / 請輸入後台管理密碼：");
+    if (password !== "8888") { // 👈 在這裡修改你的專屬密碼
+      return alert("Mot de passe incorrect / 密碼錯誤！");
+    }
+  }
+
   adminView.classList.toggle('hidden');
   customerView.classList.toggle('hidden');
 
@@ -231,7 +241,7 @@ function toggleMode() {
     fetchOrders();
     supabaseClient.channel('public:orders')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'orders' }, payload => {
-        alert('🔔 Nouvelle commande reçue ! / 收到新订单！');
+        alert('🔔 Nouvelle commande reçue ! / 收到新訂單！');
         fetchOrders();
       }).subscribe();
   }
