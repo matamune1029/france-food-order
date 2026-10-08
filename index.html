@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Menu / 点餐</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-50 p-4 max-w-md mx-auto">
+
+  <!-- 顶部标题 -->
+  <header class="flex justify-between items-center mb-6">
+    <h1 class="text-xl font-bold">Commande / 手机点餐</h1>
+    <button onclick="toggleMode()" class="text-xs bg-gray-200 px-2 py-1 rounded">切换群主后台/点餐</button>
+  </header>
+
+  <!-- 1. 顾客点餐视图 -->
+  <div id="customer-view">
+    <div id="menu-list" class="space-y-4 mb-6">加载菜单中...</div>
+    
+    <div class="bg-white p-4 rounded-lg shadow space-y-3">
+      <h3 class="font-bold border-b pb-2">Informations / 下单信息</h3>
+      <input id="cust-name" type="text" placeholder="Nom / 您的姓名或群昵称" class="w-full border p-2 rounded">
+      <input id="cust-phone" type="tel" placeholder="Téléphone / 联系电话" class="w-full border p-2 rounded">
+      <div class="flex justify-between font-bold text-lg pt-2">
+        <span>Total:</span>
+        <span id="total-price">0.00 €</span>
+      </div>
+      <button onclick="submitOrder()" class="w-full bg-green-600 text-white py-3 rounded-lg font-bold">Valider la commande / 提交订单</button>
+    </div>
+  </div>
+
+  <!-- 2. 群主后台视图 (默认隐藏) -->
+  <div id="admin-view" class="hidden">
+    <h2 class="text-lg font-bold text-red-600 mb-4">群主后台（实时接单）</h2>
+    <div id="order-list" class="space-y-4">等待新订单...</div>
+  </div>
+
+  <script>
+    // ⚠️ 請替換為你自己的 Supabase URL 和 Anon Key
+    const SUPABASE_URL = 'YOUR_SUPABASE_URL';
+    const SUPABASE_KEY = 'YOUR_SUPABASE_ANON_KEY';
+    const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+    let cart = {};
+    let menuData = [];
+
+    // 加载菜品
+    async function fetchMenu() {
+      const { data } = await supabase.from('menu_items').select('*').eq('is_available', true);
+      menuData = data || [];
+      renderMenu();
+    }
+
+    function renderMenu() {
+      const container = document.getElementById('menu-list');
+      if (menuData.length === 0) {
+        container.innerHTML = '<div class="text-center text-gray-500 py-4">暂无上架菜品，请群主在后台添加菜品</div>';
+        return;
+      }
+      container.innerHTML = menuData.map(item => `
+        <div class="flex justify-between items-center bg-white p-3 rounded shadow-sm">
+          <div>
+            <div class="font-bold">${item.name_fr}</div>
+            <div class="text-sm text-gray-500">${item.name_zh}</div>
+            <div class="text-green-600 font-bold mt-1">${item.price} €</div>
+          </div>
+          <div class="flex items-center gap-2">
+            <button onclick="updateCart('${item.id}', -1)" class="w-8 h-8 bg-gray-200 rounded-full font-bold">-</button>
+            <span id="qty-${item.id}">0</span>
+            <button onclick="updateCart('${item.id}', 1)" class="w-8 h-8 bg-green-500 text-white rounded-full font-bold">+</button>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function updateCart(id, delta) {
+      cart[id] = (cart[id] || 0) + delta;
+      if (cart[id] <= 0) delete cart[id];
+      document.getElementById(`qty-${id}`).innerText = cart[id] || 0;
+      
+      let total = 0;
+      for (let itemId in cart) {
+        const item = menuData.find(i => i.id === itemId);
+        if (item) total += item.price * cart[itemId];
+      }
+      document.getElementById('total-price').innerText = total.toFixed(2) + ' €';
+    }
+
+    // 提交订单
+    async function submitOrder() {
+      const name = document.getElementById('cust-name').value;
+      const phone = document.getElementById('cust-phone').value;
+      if (!name || Object.keys(cart).length === 0) return alert('请填写姓名并选择菜品！');
+
+      const items = Object.keys(cart).map(id => {
+        const item = menuData.find(i => i.id === id);
+        return { name: item.name_fr, qty: cart[id], price: item.price };
+      });
+      const total = parseFloat(document.getElementById('total-price').innerText);
+
+      const { error } = await supabase.from('orders').insert([{ customer_name: name, phone, items, total_price: total }]);
+      if (!error) {
+        alert('Commande envoyée ! / 订单已提交！');
+        location.reload();
+      } else {
+        alert('提交失败，请重试');
+      }
+    }
+
+    // 群主视图切换与实时监听
+    function toggleMode() {
+      const adminView = document.getElementById('admin-view');
+      const customerView = document.getElementById('customer-view');
+      adminView.classList.toggle('hidden');
+      customerView.classList.toggle('hidden');
+
+      if (!adminView.classList.contains('hidden')) {
+        fetchOrders();
+        // 开启 Supabase 实时监听，有新订单自动刷新
+        supabase.channel('public:orders')
+          .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'orders' }, payload => {
+            alert('🔔 收到新的点餐订单！');
+            fetchOrders();
+          }).subscribe();
+      }
+    }
+
+    async function fetchOrders() {
+      const { data } = await supabase.from('orders').select('*').order('created_at', { ascending: false });
+      const container = document.getElementById('order-list');
+      if (!data || data.length === 0) {
+        container.innerHTML = '<div class="text-gray-400">暂无订单</div>';
+        return;
+      }
+      container.innerHTML = data.map(o => `
+        <div class="bg-white p-3 rounded border-l-4 border-orange-500 shadow-sm">
+          <div class="flex justify-between font-bold">
+            <span>${o.customer_name} (${o.phone || '无电话'})</span>
+            <span class="text-green-600">${o.total_price} €</span>
+          </div>
+          <div class="text-xs text-gray-400 mb-2">${new Date(o.created_at).toLocaleString()}</div>
+          <ul class="text-sm bg-gray-50 p-2 rounded">
+            ${o.items.map(i => `<li>${i.name} x${i.qty}</li>`).join('')}
+          </ul>
+        </div>
+      `).join('');
+    }
+
+    fetchMenu();
+  </script>
+</body>
+</html>
