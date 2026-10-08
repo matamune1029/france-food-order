@@ -4,17 +4,15 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>法国微信点餐 / Menu</title>
+  <!-- 外部套件 -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.tailwindcss.com"></script>
-  <style>
-    /* 隐藏滚动条但保持滚动 */
-    .no-scrollbar::-webkit-scrollbar { display: none; }
-    .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-  </style>
+  <!-- 引入自訂 CSS -->
+  <link rel="stylesheet" href="style.css">
 </head>
 <body class="bg-gray-100 h-screen flex flex-col font-sans select-none overflow-hidden">
 
-  <!-- 顶部店铺招牌与公告 -->
+  <!-- 顶部店铺招牌 -->
   <header class="bg-gradient-to-r from-red-600 to-orange-500 text-white p-4 shadow-md flex-shrink-0">
     <div class="flex justify-between items-start">
       <div>
@@ -27,20 +25,14 @@
     </div>
   </header>
 
-  <!-- 1. 顾客点餐视图 (微信小程序经典左右布局) -->
+  <!-- 1. 顾客点餐视图 -->
   <div id="customer-view" class="flex-1 flex overflow-hidden relative">
-    
-    <!-- 左侧分类侧边栏 -->
-    <div id="category-bar" class="w-24 bg-gray-200 overflow-y-auto no-scrollbar flex-shrink-0 border-r border-gray-300">
-      <!-- 动态生成的分类按钮 -->
-    </div>
-
-    <!-- 右侧菜品列表 -->
+    <div id="category-bar" class="w-24 bg-gray-200 overflow-y-auto no-scrollbar flex-shrink-0 border-r border-gray-300"></div>
     <div id="menu-container" class="flex-1 overflow-y-auto p-3 space-y-4 pb-24">
       <div class="text-center text-gray-400 py-10">菜单加载中...</div>
     </div>
 
-    <!-- 底部悬浮购物车条 (小程序样式) -->
+    <!-- 底部悬浮购物车 -->
     <div class="absolute bottom-4 left-3 right-3 bg-gray-900/95 backdrop-blur-md text-white rounded-full p-2.5 shadow-2xl flex justify-between items-center z-30">
       <div class="flex items-center gap-3 pl-2" onclick="toggleCartModal()">
         <div class="relative bg-green-500 p-2.5 rounded-full shadow-lg">
@@ -56,12 +48,11 @@
         去结算
       </button>
     </div>
-
   </div>
 
-  <!-- 2. 下单信息弹窗 (Checkout Modal) -->
-  <div id="checkout-modal" class="hidden fixed inset-0 bg-black/60 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 transition-opacity">
-    <div class="bg-white w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl p-5 space-y-4 animate-slide-up">
+  <!-- 2. 下单弹窗 -->
+  <div id="checkout-modal" class="hidden fixed inset-0 bg-black/60 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+    <div class="bg-white w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl p-5 space-y-4">
       <div class="flex justify-between items-center border-b pb-3">
         <h3 class="font-bold text-lg text-gray-800">确认订单 / Finaliser</h3>
         <button onclick="closeCheckoutModal()" class="text-gray-400 text-xl font-bold">✕</button>
@@ -70,15 +61,15 @@
       <div class="space-y-3">
         <div>
           <label class="block text-xs font-bold text-gray-600 mb-1">您的姓名 / 微信群昵称 *</label>
-          <input id="cust-name" type="text" placeholder="例如：张三 (小巴黎)" class="w-full border border-gray-300 p-2.5 rounded-lg text-sm focus:outline-none focus:border-green-500">
+          <input id="cust-name" type="text" placeholder="例如：张三 (小巴黎)" class="w-full border border-gray-300 p-2.5 rounded-lg text-sm">
         </div>
         <div>
           <label class="block text-xs font-bold text-gray-600 mb-1">联系电话 / Téléphone *</label>
-          <input id="cust-phone" type="tel" placeholder="例如：06 12 34 56 78" class="w-full border border-gray-300 p-2.5 rounded-lg text-sm focus:outline-none focus:border-green-500">
+          <input id="cust-phone" type="tel" placeholder="例如：06 12 34 56 78" class="w-full border border-gray-300 p-2.5 rounded-lg text-sm">
         </div>
         <div>
           <label class="block text-xs font-bold text-gray-600 mb-1">备注/送餐地址 (选填)</label>
-          <input id="cust-note" type="text" placeholder="例: 少辣 / 18点送到门卫" class="w-full border border-gray-300 p-2.5 rounded-lg text-sm focus:outline-none focus:border-green-500">
+          <input id="cust-note" type="text" placeholder="例: 少辣 / 18点送到门卫" class="w-full border border-gray-300 p-2.5 rounded-lg text-sm">
         </div>
       </div>
 
@@ -87,7 +78,7 @@
         <span class="text-xl text-green-600"><span id="modal-total-price">0.00</span> €</span>
       </div>
 
-      <button onclick="submitOrder()" class="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-3 rounded-xl shadow-lg active:scale-98 transition">
+      <button onclick="submitOrder()" class="w-full bg-green-500 text-white font-bold py-3 rounded-xl shadow-lg">
         确认提交订单
       </button>
     </div>
@@ -102,178 +93,7 @@
     <div id="order-list" class="space-y-4">等待新订单...</div>
   </div>
 
-  <script>
-    const SUPABASE_URL = 'https://zcivplddxtaqlefrtajr.supabase.co';
-    const SUPABASE_KEY = 'sb_publishable_eQG7FVgOU36Z8edfnrf27w_5A7tlNiq';
-    const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-
-    let cart = {};
-    let menuData = [];
-    let currentCategory = '全部';
-
-    // 载入菜单
-    async function fetchMenu() {
-      const { data, error } = await supabaseClient.from('menu_items').select('*').eq('is_available', true);
-      if (error) console.error(error);
-      menuData = data || [];
-      renderCategoryBar();
-      renderMenu();
-    }
-
-    // 渲染分类侧边栏
-    function renderCategoryBar() {
-      const categories = ['全部', ...new Set(menuData.map(i => i.category || '主推菜品'))];
-      const categoryContainer = document.getElementById('category-bar');
-      categoryContainer.innerHTML = categories.map(cat => `
-        <button onclick="switchCategory('${cat}')" 
-          class="w-full py-3.5 px-2 text-xs font-medium text-center border-b border-gray-300 transition ${currentCategory === cat ? 'bg-white text-green-600 font-bold border-l-4 border-l-green-500' : 'text-gray-600'}">
-          ${cat}
-        </button>
-      `).join('');
-    }
-
-    function switchCategory(cat) {
-      currentCategory = cat;
-      renderCategoryBar();
-      renderMenu();
-    }
-
-    // 渲染菜品列表
-    function renderMenu() {
-      const container = document.getElementById('menu-container');
-      const filtered = currentCategory === '全部' 
-        ? menuData 
-        : menuData.filter(i => (i.category || '主推菜品') === currentCategory);
-
-      if (filtered.length === 0) {
-        container.innerHTML = '<div class="text-center text-gray-400 py-10">该分类下暂无菜品</div>';
-        return;
-      }
-
-      container.innerHTML = filtered.map(item => `
-        <div class="bg-white p-3 rounded-xl shadow-sm flex justify-between items-center border border-gray-100">
-          <div class="flex-1 pr-2">
-            <div class="font-bold text-gray-800 text-sm">${item.name_zh}</div>
-            <div class="text-xs text-gray-400 italic">${item.name_fr}</div>
-            <div class="text-green-600 font-extrabold text-base mt-1.5">${item.price} €</div>
-          </div>
-          <div class="flex items-center gap-2">
-            ${cart[item.id] ? `
-              <button onclick="updateCart('${item.id}', -1)" class="w-7 h-7 bg-gray-100 text-gray-700 rounded-full font-bold flex items-center justify-center active:scale-90">-</button>
-              <span class="text-sm font-bold w-4 text-center">${cart[item.id]}</span>
-            ` : ''}
-            <button onclick="updateCart('${item.id}', 1)" class="w-7 h-7 bg-green-500 text-white rounded-full font-bold flex items-center justify-center shadow-md active:scale-90">+</button>
-          </div>
-        </div>
-      `).join('');
-    }
-
-    // 更新购物车
-    function updateCart(id, delta) {
-      cart[id] = (cart[id] || 0) + delta;
-      if (cart[id] <= 0) delete cart[id];
-      renderMenu();
-
-      let total = 0;
-      let count = 0;
-      for (let itemId in cart) {
-        const item = menuData.find(i => i.id === itemId);
-        if (item) {
-          total += item.price * cart[itemId];
-          count += cart[itemId];
-        }
-      }
-
-      document.getElementById('total-price').innerText = total.toFixed(2);
-      document.getElementById('modal-total-price').innerText = total.toFixed(2);
-      
-      const badge = document.getElementById('cart-badge');
-      if (count > 0) {
-        badge.innerText = count;
-        badge.classList.remove('hidden');
-      } else {
-        badge.classList.add('hidden');
-      }
-    }
-
-    // 弹窗控制
-    function openCheckoutModal() {
-      if (Object.keys(cart).length === 0) return alert('购物车是空的，请先选择菜品！');
-      document.getElementById('checkout-modal').classList.remove('hidden');
-    }
-
-    function closeCheckoutModal() {
-      document.getElementById('checkout-modal').classList.add('hidden');
-    }
-
-    // 提交订单
-    async function submitOrder() {
-      const name = document.getElementById('cust-name').value;
-      const phone = document.getElementById('cust-phone').value;
-      const note = document.getElementById('cust-note').value;
-
-      if (!name || !phone) return alert('请填写姓名和联系电话！');
-
-      const items = Object.keys(cart).map(id => {
-        const item = menuData.find(i => i.id === id);
-        return { name: `${item.name_zh} (${item.name_fr})`, qty: cart[id], price: item.price };
-      });
-      const total = parseFloat(document.getElementById('total-price').innerText);
-
-      const { error } = await supabaseClient.from('orders').insert([
-        { customer_name: name, phone: `${phone} ${note ? '| 备注:' + note : ''}`, items, total_price: total }
-      ]);
-
-      if (!error) {
-        alert('🎉 订单提交成功！请通知群主接单！');
-        cart = {};
-        closeCheckoutModal();
-        location.reload();
-      } else {
-        alert('提交失败，请重试');
-      }
-    }
-
-    // 后台切换与监听
-    function toggleMode() {
-      const adminView = document.getElementById('admin-view');
-      const customerView = document.getElementById('customer-view');
-      adminView.classList.toggle('hidden');
-      customerView.classList.toggle('hidden');
-
-      if (!adminView.classList.contains('hidden')) {
-        fetchOrders();
-        supabaseClient.channel('public:orders')
-          .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'orders' }, payload => {
-            alert('🔔 收到新的点餐订单！');
-            fetchOrders();
-          }).subscribe();
-      }
-    }
-
-    async function fetchOrders() {
-      const { data } = await supabaseClient.from('orders').select('*').order('created_at', { ascending: false });
-      const container = document.getElementById('order-list');
-      if (!data || data.length === 0) {
-        container.innerHTML = '<div class="text-gray-400">暂无新订单</div>';
-        return;
-      }
-      container.innerHTML = data.map(o => `
-        <div class="bg-white p-3.5 rounded-xl border-l-4 border-orange-500 shadow-sm space-y-2">
-          <div class="flex justify-between font-bold text-gray-800">
-            <span>👤 ${o.customer_name}</span>
-            <span class="text-green-600 text-lg">${o.total_price} €</span>
-          </div>
-          <div class="text-xs text-gray-600">📞 ${o.phone || '无电话/备注'}</div>
-          <div class="text-[10px] text-gray-400">${new Date(o.created_at).toLocaleString()}</div>
-          <ul class="text-xs bg-gray-50 p-2.5 rounded-lg border space-y-1">
-            ${o.items.map(i => `<li class="flex justify-between"><span>${i.name}</span><span class="font-bold">x${i.qty}</span></li>`).join('')}
-          </ul>
-        </div>
-      `).join('');
-    }
-
-    fetchMenu();
-  </script>
+  <!-- 引入自訂 JS 邏輯 -->
+  <script src="app.js"></script>
 </body>
 </html>
