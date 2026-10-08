@@ -123,12 +123,30 @@ function closeCheckoutModal() {
 }
 
 // 提交訂單
+// 提交订单（带法国手机号与必填地址校验）
 async function submitOrder() {
-  const name = document.getElementById('cust-name').value;
-  const phone = document.getElementById('cust-phone').value;
-  const note = document.getElementById('cust-note').value;
+  const name = document.getElementById('cust-name').value.trim();
+  const phone = document.getElementById('cust-phone').value.trim();
+  const address = document.getElementById('cust-address').value.trim();
+  const note = document.getElementById('cust-note').value.trim();
 
-  if (!name || !phone) return alert('Veuillez remplir votre nom et téléphone ! / 请填写姓名与电话！');
+  // 1. 验证必填字段是否完整
+  if (!name) {
+    return alert('Veuillez entrer votre nom ! / 请填写您的姓名或微信昵称！');
+  }
+
+  // 2. 验证法国手机号格式 (支持 06/07/01-09 开头 10 位数字，或者 +33 格式)
+  const cleanPhone = phone.replace(/[\s\.\-\(\)]/g, ''); // 自动清除空格、点或连字符
+  const frPhoneRegex = /^(?:(?:\+33|0033)[1-9]|0[1-9])\d{8}$/;
+  
+  if (!frPhoneRegex.test(cleanPhone)) {
+    return alert('Veuillez entrer un numéro de téléphone français valide (ex: 0612345678) ! / 请填写有效的法国手机号码（例如：06 12 34 56 78）！');
+  }
+
+  // 3. 验证送餐地址是否填写
+  if (!address) {
+    return alert('Veuillez entrer votre adresse de livraison ! / 请填写送餐地址！');
+  }
 
   const items = Object.keys(cart).map(id => {
     const item = menuData.find(i => i.id === id);
@@ -136,17 +154,20 @@ async function submitOrder() {
   });
   const total = parseFloat(document.getElementById('total-price').innerText);
 
+  // 格式化电话与地址存入数据库
+  const fullContactInfo = `${phone} | Adresse: ${address}${note ? ' | Note: ' + note : ''}`;
+
   const { error } = await supabaseClient.from('orders').insert([
-    { customer_name: name, phone: `${phone} ${note ? '| Adresse:' + note : ''}`, items, total_price: total }
+    { customer_name: name, phone: fullContactInfo, items, total_price: total }
   ]);
 
   if (!error) {
-    alert('🎉 Commande envoyée ! / 订单提交成功！');
+    alert('🎉 Commande envoyée avec succès ! / 订单提交成功！');
     cart = {};
     closeCheckoutModal();
     location.reload();
   } else {
-    alert('Échec de l\'envoi / 提交失败，请重试');
+    alert('Échec de l\'envoi, veuillez réessayer / 提交失败，请重试');
   }
 }
 
