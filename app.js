@@ -4,9 +4,22 @@ const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 let cart = {};
 let menuData = [];
-let currentCategory = '全部';
+let currentCategory = 'ALL';
 
-// 载入菜单
+// 左側分類的中法翻譯對照表
+const categoryMap = {
+  'ALL': { fr: 'Tout', zh: '全部' },
+  'Viandes': { fr: 'Viandes', zh: '荤菜' },
+  '荤菜': { fr: 'Viandes', zh: '荤菜' },
+  'Poissons & Bœuf': { fr: 'Poissons/Bœuf', zh: '鱼/牛肉类' },
+  '鱼/牛肉类': { fr: 'Poissons/Bœuf', zh: '鱼/牛肉类' },
+  'Légumes': { fr: 'Légumes', zh: '素菜' },
+  '素菜': { fr: 'Légumes', zh: '素菜' },
+  'Accompagnements': { fr: 'Riz/Nouilles', zh: '主食' },
+  '主食': { fr: 'Riz/Nouilles', zh: '主食' }
+};
+
+// 載入菜單
 async function fetchMenu() {
   const { data, error } = await supabaseClient.from('menu_items').select('*').eq('is_available', true);
   if (error) console.error(error);
@@ -15,16 +28,22 @@ async function fetchMenu() {
   renderMenu();
 }
 
-// 渲染分类侧边栏
+// 渲染左側分類（法文在上、中文在下）
 function renderCategoryBar() {
-  const categories = ['全部', ...new Set(menuData.map(i => i.category || '主推菜品'))];
+  const rawCategories = ['ALL', ...new Set(menuData.map(i => i.category || 'Viandes'))];
   const categoryContainer = document.getElementById('category-bar');
-  categoryContainer.innerHTML = categories.map(cat => `
-    <button onclick="switchCategory('${cat}')" 
-      class="w-full py-3.5 px-2 text-xs font-medium text-center border-b border-gray-300 transition ${currentCategory === cat ? 'bg-white text-green-600 font-bold border-l-4 border-l-green-500' : 'text-gray-600'}">
-      ${cat}
-    </button>
-  `).join('');
+
+  categoryContainer.innerHTML = rawCategories.map(cat => {
+    const info = categoryMap[cat] || { fr: cat, zh: cat };
+    const isSelected = currentCategory === cat;
+    return `
+      <button onclick="switchCategory('${cat}')" 
+        class="w-full py-3 px-1 text-center border-b border-gray-300 transition ${isSelected ? 'bg-white text-green-600 font-bold border-l-4 border-l-green-500' : 'text-gray-600'}">
+        <div class="text-xs font-bold leading-tight">${info.fr}</div>
+        <div class="text-[10px] text-gray-400 font-normal mt-0.5">${info.zh}</div>
+      </button>
+    `;
+  }).join('');
 }
 
 function switchCategory(cat) {
@@ -33,23 +52,25 @@ function switchCategory(cat) {
   renderMenu();
 }
 
-// 渲染菜品列表
+// 渲染菜品列表（✅ 已修正：法文大字粗體在上，中文小字在下）
 function renderMenu() {
   const container = document.getElementById('menu-container');
-  const filtered = currentCategory === '全部' 
+  const filtered = currentCategory === 'ALL' 
     ? menuData 
-    : menuData.filter(i => (i.category || '主推菜品') === currentCategory);
+    : menuData.filter(i => (i.category || 'Viandes') === currentCategory);
 
   if (filtered.length === 0) {
-    container.innerHTML = '<div class="text-center text-gray-400 py-10">该分类下暂无菜品</div>';
+    container.innerHTML = '<div class="text-center text-gray-400 py-10">Aucun plat / 暂无菜品</div>';
     return;
   }
 
   container.innerHTML = filtered.map(item => `
     <div class="bg-white p-3 rounded-xl shadow-sm flex justify-between items-center border border-gray-100">
       <div class="flex-1 pr-2">
-        <div class="font-bold text-gray-800 text-sm">${item.name_zh}</div>
-        <div class="text-xs text-gray-400 italic">${item.name_fr}</div>
+        <!-- 法文大字粗體在上 -->
+        <div class="font-bold text-gray-800 text-sm leading-snug">${item.name_fr}</div>
+        <!-- 中文小字灰體在下 -->
+        <div class="text-xs text-gray-500 font-normal mt-1">${item.name_zh}</div>
         <div class="text-green-600 font-extrabold text-base mt-1.5">${item.price} €</div>
       </div>
       <div class="flex items-center gap-2">
@@ -63,7 +84,7 @@ function renderMenu() {
   `).join('');
 }
 
-// 更新购物车
+// 更新購物車
 function updateCart(id, delta) {
   cart[id] = (cart[id] || 0) + delta;
   if (cart[id] <= 0) delete cart[id];
@@ -91,9 +112,9 @@ function updateCart(id, delta) {
   }
 }
 
-// 弹窗控制
+// 彈窗控制
 function openCheckoutModal() {
-  if (Object.keys(cart).length === 0) return alert('购物车是空的，请先选择菜品！');
+  if (Object.keys(cart).length === 0) return alert('Votre panier est vide ! / 购物车是空的！');
   document.getElementById('checkout-modal').classList.remove('hidden');
 }
 
@@ -101,35 +122,35 @@ function closeCheckoutModal() {
   document.getElementById('checkout-modal').classList.add('hidden');
 }
 
-// 提交订单
+// 提交訂單
 async function submitOrder() {
   const name = document.getElementById('cust-name').value;
   const phone = document.getElementById('cust-phone').value;
   const note = document.getElementById('cust-note').value;
 
-  if (!name || !phone) return alert('请填写姓名和联系电话！');
+  if (!name || !phone) return alert('Veuillez remplir votre nom et téléphone ! / 请填写姓名与电话！');
 
   const items = Object.keys(cart).map(id => {
     const item = menuData.find(i => i.id === id);
-    return { name: `${item.name_zh} (${item.name_fr})`, qty: cart[id], price: item.price };
+    return { name: `${item.name_fr} (${item.name_zh})`, qty: cart[id], price: item.price };
   });
   const total = parseFloat(document.getElementById('total-price').innerText);
 
   const { error } = await supabaseClient.from('orders').insert([
-    { customer_name: name, phone: `${phone} ${note ? '| 备注:' + note : ''}`, items, total_price: total }
+    { customer_name: name, phone: `${phone} ${note ? '| Adresse:' + note : ''}`, items, total_price: total }
   ]);
 
   if (!error) {
-    alert('🎉 订单提交成功！请通知群主接单！');
+    alert('🎉 Commande envoyée ! / 订单提交成功！');
     cart = {};
     closeCheckoutModal();
     location.reload();
   } else {
-    alert('提交失败，请重试');
+    alert('Échec de l\'envoi / 提交失败，请重试');
   }
 }
 
-// 后台切换与监听
+// 後台切換與監聽
 function toggleMode() {
   const adminView = document.getElementById('admin-view');
   const customerView = document.getElementById('customer-view');
@@ -140,7 +161,7 @@ function toggleMode() {
     fetchOrders();
     supabaseClient.channel('public:orders')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'orders' }, payload => {
-        alert('🔔 收到新的点餐订单！');
+        alert('🔔 Nouvelle commande reçue ! / 收到新订单！');
         fetchOrders();
       }).subscribe();
   }
@@ -150,7 +171,7 @@ async function fetchOrders() {
   const { data } = await supabaseClient.from('orders').select('*').order('created_at', { ascending: false });
   const container = document.getElementById('order-list');
   if (!data || data.length === 0) {
-    container.innerHTML = '<div class="text-gray-400">暂无新订单</div>';
+    container.innerHTML = '<div class="text-gray-400">Aucune commande / 暂无订单</div>';
     return;
   }
   container.innerHTML = data.map(o => `
@@ -159,7 +180,7 @@ async function fetchOrders() {
         <span>👤 ${o.customer_name}</span>
         <span class="text-green-600 text-lg">${o.total_price} €</span>
       </div>
-      <div class="text-xs text-gray-600">📞 ${o.phone || '无电话/备注'}</div>
+      <div class="text-xs text-gray-600">📞 ${o.phone || 'N/A'}</div>
       <div class="text-[10px] text-gray-400">${new Date(o.created_at).toLocaleString()}</div>
       <ul class="text-xs bg-gray-50 p-2.5 rounded-lg border space-y-1">
         ${o.items.map(i => `<li class="flex justify-between"><span>${i.name}</span><span class="font-bold">x${i.qty}</span></li>`).join('')}
