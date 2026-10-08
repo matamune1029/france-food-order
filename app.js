@@ -125,36 +125,61 @@ function closeCheckoutModal() {
   document.getElementById('checkout-modal').classList.add('hidden');
 }
 
-// Submit Order (With Validations & Receipt Trigger)
+// Submit Order (Fixed & Complete with Error Handling)
 async function submitOrder() {
-  const name = document.getElementById('cust-name').value.trim();
-  const phone = document.getElementById('cust-phone').value.trim();
-  const address = document.getElementById('cust-address').value.trim();
-  const note = document.getElementById('cust-note').value.trim();
+  try {
+    const name = document.getElementById('cust-name').value.trim();
+    const phone = document.getElementById('cust-phone').value.trim();
+    const address = document.getElementById('cust-address').value.trim();
+    const note = document.getElementById('cust-note').value.trim();
 
-  // 1. Name Check
-  if (!name) {
-    return alert('Veuillez entrer votre nom ! / 请填写您的姓名或微信昵称！');
-  }
+    // 1. Name Check
+    if (!name) {
+      return alert('Veuillez entrer votre nom ! / 请填写您的姓名或微信昵称！');
+    }
 
-  // 2. French Phone Number Format Validation
-  const cleanPhone = phone.replace(/[\s\.\-\(\)]/g, '');
-  const frPhoneRegex = /^(?:(?:\+33|0033)[1-9]|0[1-9])\d{8}$/;
-  if (!frPhoneRegex.test(cleanPhone)) {
-    return alert('Veuillez entrer un numéro de téléphone français valide (ex: 0612345678) ! / 请填写有效的法国手机号码！');
-  }
+    // 2. French Phone Number Format Validation
+    const cleanPhone = phone.replace(/[\s\.\-\(\)]/g, '');
+    const frPhoneRegex = /^(?:(?:\+33|0033)[1-9]|0[1-9])\d{8}$/;
+    if (!frPhoneRegex.test(cleanPhone)) {
+      return alert('Veuillez entrer un numéro de téléphone français valide (ex: 0612345678) ! / 请填写有效的法国手机号码！');
+    }
 
-  // 3. Address Check
-  if (!address) {
-    return alert('Veuillez entrer votre adresse de livraison ! / 请填写送餐地址！');
-  }
+    // 3. Address Check
+    if (!address) {
+      return alert('Veuillez entrer votre adresse de livraison ! / 请填写送餐地址！');
+    }
 
-  const items = Object.keys(cart).map(id => {
-    const item = menuData.find(i => i.id === id);
-    return { name_fr: item.name_fr, name_zh: item.name_zh, qty: cart[id], price: item.price };
-  });
-  const total = parseFloat(document.getElementById('total-price').innerText);
-  const orderId = 'CC-' + Date.now().toString().slice(-6);
+    const items = Object.keys(cart).map(id => {
+      const item = menuData.find(i => i.id === id);
+      return { 
+        name_fr: item ? item.name_fr : 'Plat', 
+        name_zh: item ? item.name_zh : '菜品', 
+        qty: cart[id], 
+        price: item ? item.price : 0 
+      };
+    });
+    
+    const total = parseFloat(document.getElementById('total-price').innerText);
+    const orderId = 'CC-' + Date.now().toString().slice(-6);
 
-  const fullContactInfo = `${phone} | Adresse: ${address}${note ? ' | Note: ' + note : ''}`;
-  const dbItems = items.map(i => ({ name: `${i.name_fr} (${i.name_
+    const fullContactInfo = `${phone} | Adresse: ${address}${note ? ' | Note: ' + note : ''}`;
+    const dbItems = items.map(i => ({ name: `${i.name_fr} (${i.name_zh})`, qty: i.qty, price: i.price }));
+
+    // Send to Supabase
+    const { error } = await supabaseClient.from('orders').insert([
+      { customer_name: name, phone: fullContactInfo, items: dbItems, total_price: total }
+    ]);
+
+    if (error) {
+      console.error('Supabase Error:', error);
+      alert('Échec / 数据库写入错误: ' + error.message);
+      return;
+    }
+
+    // Save order data for receipt modal
+    lastOrderDetails = { orderId, name, phone, address, note, items, total };
+
+    // Clear cart & close checkout modal
+    cart = {};
+    closeCheckoutModal
