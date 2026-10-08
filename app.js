@@ -5,7 +5,7 @@ const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 let cart = {};
 let menuData = [];
 let currentCategory = 'ALL';
-let lastOrderDetails = null; // Stores last order data for the receipt modal
+let lastOrderDetails = null; // Stores last order data for receipt modal
 
 // Category mapping (French on top, Chinese below)
 const categoryMap = {
@@ -57,7 +57,7 @@ function switchCategory(cat) {
   renderMenu();
 }
 
-// Render Food Menu (French bold on top, Chinese muted below)
+// Render Food Menu
 function renderMenu() {
   const container = document.getElementById('menu-container');
   const filtered = currentCategory === 'ALL' 
@@ -115,7 +115,7 @@ function updateCart(id, delta) {
   }
 }
 
-// Checkout Modal Control
+// Modal Controls
 function openCheckoutModal() {
   if (Object.keys(cart).length === 0) return alert('Votre panier est vide ! / 购物车是空的！');
   document.getElementById('checkout-modal').classList.remove('hidden');
@@ -125,7 +125,7 @@ function closeCheckoutModal() {
   document.getElementById('checkout-modal').classList.add('hidden');
 }
 
-// Submit Order (Fixed & Complete with Error Handling)
+// Submit Order
 async function submitOrder() {
   try {
     const name = document.getElementById('cust-name').value.trim();
@@ -133,22 +133,15 @@ async function submitOrder() {
     const address = document.getElementById('cust-address').value.trim();
     const note = document.getElementById('cust-note').value.trim();
 
-    // 1. Name Check
-    if (!name) {
-      return alert('Veuillez entrer votre nom ! / 请填写您的姓名或微信昵称！');
-    }
+    if (!name) return alert('Veuillez entrer votre nom ! / 请填写姓名！');
 
-    // 2. French Phone Number Format Validation
     const cleanPhone = phone.replace(/[\s\.\-\(\)]/g, '');
     const frPhoneRegex = /^(?:(?:\+33|0033)[1-9]|0[1-9])\d{8}$/;
     if (!frPhoneRegex.test(cleanPhone)) {
       return alert('Veuillez entrer un numéro de téléphone français valide (ex: 0612345678) ! / 请填写有效的法国手机号码！');
     }
 
-    // 3. Address Check
-    if (!address) {
-      return alert('Veuillez entrer votre adresse de livraison ! / 请填写送餐地址！');
-    }
+    if (!address) return alert('Veuillez entrer votre adresse de livraison ! / 请填写送餐地址！');
 
     const items = Object.keys(cart).map(id => {
       const item = menuData.find(i => i.id === id);
@@ -166,7 +159,6 @@ async function submitOrder() {
     const fullContactInfo = `${phone} | Adresse: ${address}${note ? ' | Note: ' + note : ''}`;
     const dbItems = items.map(i => ({ name: `${i.name_fr} (${i.name_zh})`, qty: i.qty, price: i.price }));
 
-    // Send to Supabase
     const { error } = await supabaseClient.from('orders').insert([
       { customer_name: name, phone: fullContactInfo, items: dbItems, total_price: total }
     ]);
@@ -177,9 +169,95 @@ async function submitOrder() {
       return;
     }
 
-    // Save order data for receipt modal
     lastOrderDetails = { orderId, name, phone, address, note, items, total };
 
-    // Clear cart & close checkout modal
     cart = {};
-    closeCheckoutModal
+    closeCheckoutModal();
+    showReceiptModal(lastOrderDetails);
+
+  } catch (err) {
+    console.error('Submission Error:', err);
+    alert('Erreur / 提交过程发生错误: ' + err.message);
+  }
+}
+
+// Show Receipt Modal
+function showReceiptModal(order) {
+  document.getElementById('receipt-id').innerText = '#' + order.orderId;
+  document.getElementById('receipt-name').innerText = order.name;
+  document.getElementById('receipt-phone').innerText = order.phone;
+  document.getElementById('receipt-address').innerText = order.address;
+  document.getElementById('receipt-total').innerText = order.total.toFixed(2);
+
+  const itemsContainer = document.getElementById('receipt-items');
+  itemsContainer.innerHTML = order.items.map(i => `
+    <li class="flex justify-between">
+      <span>${i.name_fr} (${i.name_zh}) x${i.qty}</span>
+      <span class="font-bold">${(i.price * i.qty).toFixed(2)} €</span>
+    </li>
+  `).join('');
+
+  document.getElementById('receipt-modal').classList.remove('hidden');
+}
+
+// Copy Receipt Details
+function copyReceiptText() {
+  if (!lastOrderDetails) return;
+  const o = lastOrderDetails;
+  const itemText = o.items.map(i => `- ${i.name_fr} (${i.name_zh}) x${i.qty}`).join('\n');
+  const text = `🧾 【Cici Cuisine 订单凭证 #${o.orderId}】\n👤 姓名: ${o.name}\n📞 电话: ${o.phone}\n📍 地址: ${o.address}\n\n🍲 订购餐点:\n${itemText}\n\n💰 总计: ${o.total.toFixed(2)} €`;
+
+  navigator.clipboard.writeText(text).then(() => {
+    alert('📋 订单明细已复制到剪贴板！可以直接发送给群主微信。');
+  }).catch(() => {
+    alert('复制失败，请直接截图保存。');
+  });
+}
+
+// Close Receipt Modal
+function closeReceiptModal() {
+  document.getElementById('receipt-modal').classList.add('hidden');
+  renderMenu();
+}
+
+// Admin Toggle & Real-time Orders
+function toggleMode() {
+  const adminView = document.getElementById('admin-view');
+  const customerView = document.getElementById('customer-view');
+  adminView.classList.toggle('hidden');
+  customerView.classList.toggle('hidden');
+
+  if (!adminView.classList.contains('hidden')) {
+    fetchOrders();
+    supabaseClient.channel('public:orders')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'orders' }, payload => {
+        alert('🔔 Nouvelle commande reçue ! / 收到新订单！');
+        fetchOrders();
+      }).subscribe();
+  }
+}
+
+// Fetch Admin Orders
+async function fetchOrders() {
+  const { data } = await supabaseClient.from('orders').select('*').order('created_at', { ascending: false });
+  const container = document.getElementById('order-list');
+  if (!data || data.length === 0) {
+    container.innerHTML = '<div class="text-gray-400">Aucune commande / 暂无订单</div>';
+    return;
+  }
+  container.innerHTML = data.map(o => `
+    <div class="bg-white p-3.5 rounded-xl border-l-4 border-orange-500 shadow-sm space-y-2">
+      <div class="flex justify-between font-bold text-gray-800">
+        <span>👤 ${o.customer_name}</span>
+        <span class="text-green-600 text-lg">${o.total_price} €</span>
+      </div>
+      <div class="text-xs text-gray-600">📞 ${o.phone || 'N/A'}</div>
+      <div class="text-[10px] text-gray-400">${new Date(o.created_at).toLocaleString()}</div>
+      <ul class="text-xs bg-gray-50 p-2.5 rounded-lg border space-y-1">
+        ${o.items.map(i => `<li class="flex justify-between"><span>${i.name}</span><span class="font-bold">x${i.qty}</span></li>`).join('')}
+      </ul>
+    </div>
+  `).join('');
+}
+
+fetchMenu();
