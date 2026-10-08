@@ -38,17 +38,21 @@
   </div>
 
   <script>
-    // ⚠️ 請替換為你自己的 Supabase URL 和 Anon Key
     const SUPABASE_URL = 'https://zcivplddxtaqlefrtajr.supabase.co';
     const SUPABASE_KEY = 'sb_publishable_eQG7FVgOU36Z8edfnrf27w_5A7tlNiq';
-    const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+    
+    // ✅ 已修正：把變數名稱改為 supabaseClient，避免全域變數重名衝突
+    const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
     let cart = {};
     let menuData = [];
 
     // 加载菜品
     async function fetchMenu() {
-      const { data } = await supabase.from('menu_items').select('*').eq('is_available', true);
+      const { data, error } = await supabaseClient.from('menu_items').select('*').eq('is_available', true);
+      if (error) {
+        console.error('Fetch Menu Error:', error);
+      }
       menuData = data || [];
       renderMenu();
     }
@@ -100,7 +104,7 @@
       });
       const total = parseFloat(document.getElementById('total-price').innerText);
 
-      const { error } = await supabase.from('orders').insert([{ customer_name: name, phone, items, total_price: total }]);
+      const { error } = await supabaseClient.from('orders').insert([{ customer_name: name, phone, items, total_price: total }]);
       if (!error) {
         alert('Commande envoyée ! / 订单已提交！');
         location.reload();
@@ -119,7 +123,7 @@
       if (!adminView.classList.contains('hidden')) {
         fetchOrders();
         // 开启 Supabase 实时监听，有新订单自动刷新
-        supabase.channel('public:orders')
+        supabaseClient.channel('public:orders')
           .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'orders' }, payload => {
             alert('🔔 收到新的点餐订单！');
             fetchOrders();
@@ -128,7 +132,7 @@
     }
 
     async function fetchOrders() {
-      const { data } = await supabase.from('orders').select('*').order('created_at', { ascending: false });
+      const { data } = await supabaseClient.from('orders').select('*').order('created_at', { ascending: false });
       const container = document.getElementById('order-list');
       if (!data || data.length === 0) {
         container.innerHTML = '<div class="text-gray-400">暂无订单</div>';
