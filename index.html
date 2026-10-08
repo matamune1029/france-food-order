@@ -52,6 +52,7 @@
   </div>
 
   <!-- 2. 下單彈窗 -->
+  <!-- 2. 下单弹窗 -->
   <div id="checkout-modal" class="hidden fixed inset-0 bg-black/60 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
     <div class="bg-white w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl p-5 space-y-4">
       <div class="flex justify-between items-center border-b pb-3">
@@ -62,15 +63,19 @@
       <div class="space-y-3">
         <div>
           <label class="block text-xs font-bold text-gray-600 mb-1">Nom / 姓名或微信昵称 *</label>
-          <input id="cust-name" type="text" placeholder="Ex: Jean (Paris)" class="w-full border border-gray-300 p-2.5 rounded-lg text-sm">
+          <input id="cust-name" type="text" placeholder="Ex: Jean (Paris)" class="w-full border border-gray-300 p-2.5 rounded-lg text-sm focus:outline-none focus:border-green-500">
         </div>
         <div>
-          <label class="block text-xs font-bold text-gray-600 mb-1">Téléphone / 联系电话 *</label>
-          <input id="cust-phone" type="tel" placeholder="Ex: 06 12 34 56 78" class="w-full border border-gray-300 p-2.5 rounded-lg text-sm">
+          <label class="block text-xs font-bold text-gray-600 mb-1">Téléphone (FR) / 法国联系电话 *</label>
+          <input id="cust-phone" type="tel" placeholder="Ex: 06 12 34 56 78" class="w-full border border-gray-300 p-2.5 rounded-lg text-sm focus:outline-none focus:border-green-500">
         </div>
         <div>
-          <label class="block text-xs font-bold text-gray-600 mb-1">Adresse / 备注或送餐地址 (选填)</label>
-          <input id="cust-note" type="text" placeholder="Ex: Less spicy / 送餐地址" class="w-full border border-gray-300 p-2.5 rounded-lg text-sm">
+          <label class="block text-xs font-bold text-gray-600 mb-1">Adresse de livraison / 送餐地址 *</label>
+          <input id="cust-address" type="text" placeholder="Ex: 12 Rue de Rivoli, Paris 75001" class="w-full border border-gray-300 p-2.5 rounded-lg text-sm focus:outline-none focus:border-green-500">
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-gray-600 mb-1">Remarques / 备注 (选填)</label>
+          <input id="cust-note" type="text" placeholder="Ex: Less spicy / 微辣" class="w-full border border-gray-300 p-2.5 rounded-lg text-sm focus:outline-none focus:border-green-500">
         </div>
       </div>
 
@@ -79,7 +84,7 @@
         <span class="text-xl text-green-600"><span id="modal-total-price">0.00</span> €</span>
       </div>
 
-      <button onclick="submitOrder()" class="w-full bg-green-500 text-white font-bold py-3 rounded-xl shadow-lg">
+      <button onclick="submitOrder()" class="w-full bg-green-500 text-white font-bold py-3 rounded-xl shadow-lg hover:bg-green-600 transition">
         Confirmer / 提交订单
       </button>
     </div>
