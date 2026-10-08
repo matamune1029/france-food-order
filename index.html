@@ -53,6 +53,7 @@
 
   <!-- 2. 下單彈窗 -->
   <!-- 2. 下单弹窗 -->
+<!-- 2. 下單資訊彈窗 (Checkout Modal) -->
   <div id="checkout-modal" class="hidden fixed inset-0 bg-black/60 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
     <div class="bg-white w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl p-5 space-y-4">
       <div class="flex justify-between items-center border-b pb-3">
@@ -90,6 +91,54 @@
     </div>
   </div>
 
+  <!-- 3. 電子小票彈窗 (Receipt Modal - 下單成功後自動彈出) -->
+  <div id="receipt-modal" class="hidden fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
+    <div class="bg-white w-full max-w-md rounded-2xl p-6 space-y-4 shadow-2xl relative border-t-8 border-green-500 animate-slide-up">
+      
+      <!-- 頂部成功圖示與標題 -->
+      <div class="text-center">
+        <div class="w-12 h-12 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto text-2xl font-bold mb-2">✓</div>
+        <h3 class="text-xl font-extrabold text-gray-800">Commande Confirmée</h3>
+        <p class="text-xs text-gray-500 mt-1">訂單已成功提交！請截圖或複製發給群主</p>
+      </div>
+
+      <!-- 小票紙張質感卡片 -->
+      <div class="bg-gray-50 border border-dashed border-gray-300 p-4 rounded-xl space-y-3 text-xs text-gray-700">
+        <div class="flex justify-between border-b pb-2">
+          <span class="font-bold text-gray-500">N° Commande (單號):</span>
+          <span id="receipt-id" class="font-mono font-bold text-gray-800">#CC-0001</span>
+        </div>
+        <div class="space-y-1">
+          <div><strong>Client / 姓名:</strong> <span id="receipt-name"></span></div>
+          <div><strong>Tél / 電話:</strong> <span id="receipt-phone"></span></div>
+          <div><strong>Adresse / 地址:</strong> <span id="receipt-address"></span></div>
+        </div>
+
+        <div class="border-t pt-2 space-y-1">
+          <div class="font-bold text-gray-600 mb-1">Détail / 餐點明細:</div>
+          <ul id="receipt-items" class="space-y-1 pl-1">
+            <!-- JS 動態寫入餐點內容 -->
+          </ul>
+        </div>
+
+        <div class="border-t pt-2 flex justify-between items-center font-bold text-sm text-gray-900">
+          <span>Total / 總計:</span>
+          <span class="text-base text-green-600"><span id="receipt-total">0.00</span> €</span>
+        </div>
+      </div>
+
+      <!-- 操作按鈕 -->
+      <div class="space-y-2 pt-1">
+        <button onclick="copyReceiptText()" class="w-full bg-orange-500 hover:bg-orange-600 text-white font-bold py-2.5 rounded-xl text-xs flex items-center justify-center gap-1 shadow transition">
+          📋 複製訂單明細 (可直接貼給群主微信)
+        </button>
+        <button onclick="closeReceiptModal()" class="w-full bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold py-2.5 rounded-xl text-xs transition">
+          Fermer / 完成
+        </button>
+      </div>
+
+    </div>
+  </div>
   <!-- 3. 群主後台視圖 -->
   <div id="admin-view" class="hidden flex-1 overflow-y-auto p-4 bg-gray-100">
     <div class="flex justify-between items-center mb-4 border-b pb-2">
