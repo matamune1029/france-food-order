@@ -41,7 +41,7 @@
     <div class="fixed bottom-0 inset-x-0 bg-slate-800 text-white p-3 flex justify-between items-center shadow-2xl z-40 border-t border-slate-700">
       <div class="flex items-center gap-3">
         <div class="relative">
-          <button onclick="openCheckoutModal()" class="w-10 h-10 bg-green-500 rounded-full flex items-center justify-center font-bold text-lg active:scale-90 transition">
+          <button type="button" onclick="openCheckoutModal()" class="w-10 h-10 bg-green-500 rounded-full flex items-center justify-center font-bold text-lg active:scale-90 transition">
             🛒
           </button>
           <span id="cart-badge" class="hidden absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold w-5 h-5 rounded-full flex items-center justify-center border-2 border-slate-800">0</span>
@@ -51,7 +51,7 @@
           <div class="text-[10px] text-gray-400">Livraison à domicile</div>
         </div>
       </div>
-      <button onclick="openCheckoutModal()" class="bg-green-500 hover:bg-green-600 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow active:scale-95 transition">
+      <button type="button" onclick="openCheckoutModal()" class="bg-green-500 hover:bg-green-600 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow active:scale-95 transition">
         Valider / 结算
       </button>
     </div>
@@ -62,7 +62,7 @@
     <div class="bg-white w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl p-5 space-y-4 max-h-[90vh] overflow-y-auto">
       <div class="flex justify-between items-center border-b pb-3">
         <h3 class="font-bold text-lg text-gray-800">Finaliser la commande / 确认订单</h3>
-        <button onclick="closeCheckoutModal()" class="text-gray-400 text-xl font-bold">✕</button>
+        <button type="button" onclick="closeCheckoutModal()" class="text-gray-400 text-xl font-bold">✕</button>
       </div>
       
       <div class="space-y-3">
@@ -107,7 +107,7 @@
         <span class="text-xl text-green-600"><span id="modal-total-price">0.00</span> €</span>
       </div>
 
-      <button onclick="submitOrder()" class="w-full bg-green-500 text-white font-bold py-3 rounded-xl shadow-lg hover:bg-green-600 transition">
+      <button type="button" onclick="submitOrder()" class="w-full bg-green-500 text-white font-bold py-3 rounded-xl shadow-lg hover:bg-green-600 transition">
         Confirmer / 提交订单
       </button>
     </div>
@@ -146,10 +146,10 @@
       </div>
 
       <div class="space-y-2 pt-1">
-        <button onclick="copyReceiptText()" class="w-full bg-orange-500 hover:bg-orange-600 text-white font-bold py-2.5 rounded-xl text-xs flex items-center justify-center gap-1 shadow transition">
+        <button type="button" onclick="copyReceiptText()" class="w-full bg-orange-500 hover:bg-orange-600 text-white font-bold py-2.5 rounded-xl text-xs flex items-center justify-center gap-1 shadow transition">
           📋 复制订单明细 (可直接贴给群主微信)
         </button>
-        <button onclick="closeReceiptModal()" class="w-full bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold py-2.5 rounded-xl text-xs transition">
+        <button type="button" onclick="closeReceiptModal()" class="w-full bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold py-2.5 rounded-xl text-xs transition">
           Fermer / 完成
         </button>
       </div>
@@ -160,17 +160,17 @@
   <div id="admin-view" class="hidden p-4 space-y-4 max-w-lg mx-auto pb-20 overflow-y-auto h-full">
     <div class="flex justify-between items-center bg-white p-3 rounded-xl shadow-sm border">
       <h2 class="font-bold text-gray-800 text-base">🚨 Commandes & Menu / 群主后台</h2>
-      <button onclick="toggleMode()" class="bg-gray-100 text-gray-600 text-xs px-3 py-1.5 rounded-lg font-bold">
+      <button type="button" onclick="toggleMode()" class="bg-gray-100 text-gray-600 text-xs px-3 py-1.5 rounded-lg font-bold">
         Retour / 返回前台
       </button>
     </div>
 
     <!-- 后台 功能切换 Tab -->
     <div class="flex bg-gray-200 p-1 rounded-xl text-xs font-bold">
-      <button id="tab-orders-btn" onclick="switchAdminTab('orders')" class="flex-1 py-2 rounded-lg bg-white shadow text-gray-800 transition">
+      <button id="tab-orders-btn" type="button" onclick="switchAdminTab('orders')" class="flex-1 py-2 rounded-lg bg-white shadow text-gray-800 transition">
         📦 订单管理
       </button>
-      <button id="tab-menu-btn" onclick="switchAdminTab('menu')" class="flex-1 py-2 rounded-lg text-gray-500 transition">
+      <button id="tab-menu-btn" type="button" onclick="switchAdminTab('menu')" class="flex-1 py-2 rounded-lg text-gray-500 transition">
         🍲 菜品管理
       </button>
     </div>
@@ -184,7 +184,7 @@
 
     <!-- TAB 2: 菜品管理 -->
     <div id="admin-menu-tab" class="hidden space-y-3">
-      <button onclick="openDishModal()" class="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-2.5 rounded-xl text-xs shadow transition">
+      <button type="button" onclick="openDishModal()" class="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-2.5 rounded-xl text-xs shadow transition">
         ➕ Add New Dish / 新增菜品
       </button>
       <div id="admin-menu-list" class="space-y-2">
@@ -197,34 +197,42 @@
   <div id="dish-modal" class="hidden fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
     <div class="bg-white w-full max-w-md rounded-2xl p-5 space-y-3 shadow-2xl">
       <div class="flex justify-between items-center border-b pb-2">
-        <h3 id="dish-modal-title" class="font-bold text-sm text-gray-800">Ajouter un plat / 添加菜品</h3>
-        <button onclick="closeDishModal()" class="text-gray-400 font-bold">✕</button>
+        <h3 id="dish-modal-title" class="font-bold text-sm text-gray-800">Ajouter un plat / 新增菜品</h3>
+        <button type="button" onclick="closeDishModal()" class="text-gray-400 font-bold">✕</button>
       </div>
       <input type="hidden" id="dish-id">
+      
       <div>
         <label class="block text-xs font-bold text-gray-600 mb-1">Nom (FR) / 法文名称 *</label>
-        <input id="dish-name-fr" type="text" class="w-full border p-2 rounded text-xs">
+        <input id="dish-name-fr" type="text" class="w-full border p-2 rounded text-xs" placeholder="Ex: Poulet Croustillant">
       </div>
+      
       <div>
         <label class="block text-xs font-bold text-gray-600 mb-1">Nom (ZH) / 中文名称 *</label>
-        <input id="dish-name-zh" type="text" class="w-full border p-2 rounded text-xs">
+        <input id="dish-name-zh" type="text" class="w-full border p-2 rounded text-xs" placeholder="例如：香酥鸡">
       </div>
-      <div class="grid grid-cols-2 gap-2">
+      
+      <div class="grid grid-cols-3 gap-2">
         <div>
           <label class="block text-xs font-bold text-gray-600 mb-1">Prix (€) / 价格 *</label>
-          <input id="dish-price" type="number" step="0.01" class="w-full border p-2 rounded text-xs">
+          <input id="dish-price" type="number" step="0.01" class="w-full border p-2 rounded text-xs" placeholder="12.50">
         </div>
         <div>
-          <label class="block text-xs font-bold text-gray-600 mb-1">Catégorie / 分类</label>
+          <label class="block text-xs font-bold text-gray-600 mb-1">Ordre / 排序号</label>
+          <input id="dish-sort" type="number" class="w-full border p-2 rounded text-xs" placeholder="1">
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-gray-600 mb-1">Catégorie / 分类 *</label>
           <select id="dish-category" class="w-full border p-2 rounded text-xs bg-white">
-            <option value="Viandes">Viandes / 荤菜</option>
-            <option value="Poissons & Bœuf">Poissons/Bœuf / 鱼牛肉类</option>
-            <option value="Légumes">Légumes / 素菜</option>
-            <option value="Accompagnements">Riz/Nouilles / 主食</option>
+            <option value="荤菜">Viandes / 荤菜</option>
+            <option value="鱼/牛肉类">Poissons/Bœuf / 鱼牛肉类</option>
+            <option value="素菜">Légumes / 素菜</option>
+            <option value="主食">Riz/Nouilles / 主食</option>
           </select>
         </div>
       </div>
-      <button onclick="saveDish()" class="w-full bg-green-500 text-white font-bold py-2.5 rounded-xl text-xs shadow">
+      
+      <button type="button" onclick="saveDish()" class="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-2.5 rounded-xl text-xs shadow transition">
         Enregistrer / 保存菜品
       </button>
     </div>
