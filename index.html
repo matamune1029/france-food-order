@@ -2,66 +2,62 @@
 <html lang="fr">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Cici Cuisine / 点餐</title>
-  <!-- 外部套件 -->
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cici Cuisine - Commande en ligne</title>
   <script src="https://cdn.tailwindcss.com"></script>
-  <!-- 引入自訂 CSS -->
-  <link rel="stylesheet" href="style.css">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
-<body class="bg-gray-100 h-screen flex flex-col font-sans select-none overflow-hidden">
+<body class="bg-gray-100 flex flex-col h-screen overflow-hidden font-sans">
 
-  <!-- 頂部店鋪招牌 -->
- <!-- 頂部店鋪招牌 -->
-<!-- 頂部店鋪招牌 -->
+  <!-- 1. 顶部店铺招牌 -->
   <header class="bg-gradient-to-r from-red-600 to-orange-500 text-white p-4 shadow-md flex-shrink-0 select-none">
     <div class="flex justify-between items-start">
       <div>
-        <!-- ✅ 連擊 5 次標題觸發暗號 -->
         <h1 onclick="handleSecretClick()" class="text-xl font-bold tracking-wide cursor-pointer active:opacity-80">Cici Cuisine</h1>
-        <!-- ✅ 營業時間與配送標籤 -->
         <div class="space-y-0.5 mt-1">
           <p class="text-xs opacity-90">🕒 Livraison | 配送</p>
           <p class="text-[11px] opacity-80 font-medium">🕒 12:00 - 14:00 (Lundi - Samedi)</p>
         </div>
       </div>
-      <!-- ✅ 後台按鈕默認隱藏 -->
       <button id="admin-btn" onclick="toggleMode()" class="hidden bg-white/20 hover:bg-white/30 text-white text-xs px-2.5 py-1 rounded-full border border-white/40 transition">
         Admin / 后台
       </button>
     </div>
   </header>
 
-  <!-- 1. 顧客點餐視圖 -->
-  <div id="customer-view" class="flex-1 flex overflow-hidden relative">
-    <div id="category-bar" class="w-28 bg-gray-200 overflow-y-auto no-scrollbar flex-shrink-0 border-r border-gray-300"></div>
-    <div id="menu-container" class="flex-1 overflow-y-auto p-3 space-y-4 pb-24">
+  <!-- 2. 顾客前台点餐界面 -->
+  <div id="customer-view" class="flex-1 flex overflow-hidden">
+    <!-- 左侧分类侧边栏 -->
+    <div id="category-bar" class="w-24 bg-gray-200 border-r border-gray-300 overflow-y-auto flex-shrink-0">
+      <!-- 动态渲染分类 -->
+    </div>
+
+    <!-- 右侧菜品列表 -->
+    <div id="menu-container" class="flex-1 p-3 overflow-y-auto space-y-3 pb-24">
       <div class="text-center text-gray-400 py-10">Chargement du menu...</div>
     </div>
 
-    <!-- 底部懸浮購物車 -->
-    <div class="absolute bottom-4 left-3 right-3 bg-gray-900/95 backdrop-blur-md text-white rounded-full p-2.5 shadow-2xl flex justify-between items-center z-30">
-      <div class="flex items-center gap-3 pl-2" onclick="openCheckoutModal()">
-        <div class="relative bg-green-500 p-2.5 rounded-full shadow-lg">
-          🛒
-          <span id="cart-badge" class="hidden absolute -top-1 -right-1 bg-red-500 text-white text-xs w-5 h-5 rounded-full flex items-center justify-center font-bold">0</span>
+    <!-- 底部购物车结算栏 -->
+    <div class="fixed bottom-0 inset-x-0 bg-slate-800 text-white p-3 flex justify-between items-center shadow-2xl z-40 border-t border-slate-700">
+      <div class="flex items-center gap-3">
+        <div class="relative">
+          <button onclick="openCheckoutModal()" class="w-10 h-10 bg-green-500 rounded-full flex items-center justify-center font-bold text-lg active:scale-90 transition">
+            🛒
+          </button>
+          <span id="cart-badge" class="hidden absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold w-5 h-5 rounded-full flex items-center justify-center border-2 border-slate-800">0</span>
         </div>
         <div>
-          <div class="text-lg font-bold text-white"><span id="total-price">0.00</span> €</div>
+          <div class="text-lg font-black text-green-400"><span id="total-price">0.00</span> €</div>
           <div class="text-[10px] text-gray-400">Livraison à domicile</div>
         </div>
       </div>
-      <button onclick="openCheckoutModal()" class="bg-green-500 hover:bg-green-600 active:scale-95 text-white px-6 py-2.5 rounded-full font-bold text-sm transition">
+      <button onclick="openCheckoutModal()" class="bg-green-500 hover:bg-green-600 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow active:scale-95 transition">
         Valider / 结算
       </button>
     </div>
   </div>
 
-  <!-- 2. 下單彈窗 -->
-  <!-- 2. 下单弹窗 -->
-<!-- 2. 下單資訊彈窗 (Checkout Modal) -->
-  <!-- 2. 下单资讯弹窗 (Checkout Modal) -->
+  <!-- 3. 下单弹窗 -->
   <div id="checkout-modal" class="hidden fixed inset-0 bg-black/60 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
     <div class="bg-white w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl p-5 space-y-4 max-h-[90vh] overflow-y-auto">
       <div class="flex justify-between items-center border-b pb-3">
@@ -70,7 +66,6 @@
       </div>
       
       <div class="space-y-3">
-        <!-- 新增：配送日期（必选） -->
         <div>
           <label class="block text-xs font-bold text-gray-600 mb-1">Jour de livraison / 配送日期 *</label>
           <select id="cust-date" class="w-full border border-gray-300 p-2.5 rounded-lg text-sm bg-white focus:outline-none focus:border-green-500 font-bold text-gray-800">
@@ -80,7 +75,6 @@
           </select>
         </div>
 
-        <!-- 新增：配送时段（必选） -->
         <div>
           <label class="block text-xs font-bold text-gray-600 mb-1">Créneau horaire / 配送时段 *</label>
           <select id="cust-time" class="w-full border border-gray-300 p-2.5 rounded-lg text-sm bg-white focus:outline-none focus:border-green-500 font-bold text-gray-800">
@@ -119,10 +113,9 @@
     </div>
   </div>
 
-  <!-- 3. 电子小票弹窗 (Receipt Modal) -->
+  <!-- 4. 电子小票弹窗 -->
   <div id="receipt-modal" class="hidden fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
     <div class="bg-white w-full max-w-md rounded-2xl p-6 space-y-4 shadow-2xl relative border-t-8 border-green-500 animate-slide-up max-h-[90vh] overflow-y-auto">
-      
       <div class="text-center">
         <div class="w-12 h-12 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto text-2xl font-bold mb-2">✓</div>
         <h3 class="text-xl font-extrabold text-gray-800">Commande Confirmée</h3>
@@ -135,7 +128,6 @@
           <span id="receipt-id" class="font-mono font-bold text-gray-800">#CC-0001</span>
         </div>
         <div class="space-y-1">
-          <!-- 新增：配送时间小票展示 -->
           <div class="text-orange-600 font-bold"><strong>Livraison / 配送时间:</strong> <span id="receipt-slot"></span></div>
           <div><strong>Client / 姓名:</strong> <span id="receipt-name"></span></div>
           <div><strong>Tél / 电话:</strong> <span id="receipt-phone"></span></div>
@@ -161,12 +153,11 @@
           Fermer / 完成
         </button>
       </div>
-
     </div>
   </div>
-  <!-- 3. 群主後台視圖 -->
-  <!-- 4. 群主后台视图 (Admin View) -->
-  <div id="admin-view" class="hidden p-4 space-y-4 max-w-lg mx-auto pb-20">
+
+  <!-- 5. 群主后台视图 (Admin View) -->
+  <div id="admin-view" class="hidden p-4 space-y-4 max-w-lg mx-auto pb-20 overflow-y-auto h-full">
     <div class="flex justify-between items-center bg-white p-3 rounded-xl shadow-sm border">
       <h2 class="font-bold text-gray-800 text-base">🚨 Commandes & Menu / 群主后台</h2>
       <button onclick="toggleMode()" class="bg-gray-100 text-gray-600 text-xs px-3 py-1.5 rounded-lg font-bold">
@@ -191,7 +182,7 @@
       </div>
     </div>
 
-    <!-- TAB 2: 菜品管理 (修改价格 / 上下架 / 新增) -->
+    <!-- TAB 2: 菜品管理 -->
     <div id="admin-menu-tab" class="hidden space-y-3">
       <button onclick="openDishModal()" class="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-2.5 rounded-xl text-xs shadow transition">
         ➕ Add New Dish / 新增菜品
@@ -202,7 +193,7 @@
     </div>
   </div>
 
-  <!-- 5. 新增/编辑菜品弹窗 Modal -->
+  <!-- 6. 新增/编辑菜品弹窗 Modal -->
   <div id="dish-modal" class="hidden fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
     <div class="bg-white w-full max-w-md rounded-2xl p-5 space-y-3 shadow-2xl">
       <div class="flex justify-between items-center border-b pb-2">
@@ -239,7 +230,6 @@
     </div>
   </div>
 
-  <!-- 引入自訂 JS 邏輯 -->
   <script src="app.js"></script>
 </body>
 </html>
