@@ -23,10 +23,10 @@ const categoryMap = {
   'Accompagnements / 主食': { fr: 'Riz/Nouilles', zh: '主食' }
 };
 
-// 1. 载入菜单
+// 1. 载入所有菜单（不进行 is_available 过滤，由前端渲染逻辑控制状态）
 async function fetchMenu() {
   try {
-    const { data, error } = await supabaseClient.from('menu_items').select('*').eq('is_available', true);
+    const { data, error } = await supabaseClient.from('menu_items').select('*').order('created_at', { ascending: false });
     if (error) console.error('Menu Fetch Error:', error);
     menuData = data || [];
     renderCategoryBar();
@@ -49,7 +49,7 @@ function renderCategoryBar() {
     const info = categoryMap[cat] || { fr: cat, zh: cat };
     const isSelected = currentCategory === cat;
     return `
-      <button onclick="switchCategory('${cat}')" 
+      <button type="button" onclick="switchCategory('${cat}')" 
         class="w-full py-3 px-1 text-center border-b border-gray-300 transition ${isSelected ? 'bg-white text-green-600 font-bold border-l-4 border-l-green-500' : 'text-gray-600'}">
         <div class="text-xs font-bold leading-tight">${info.fr}</div>
         <div class="text-[10px] text-gray-400 font-normal mt-0.5">${info.zh}</div>
@@ -64,7 +64,7 @@ function switchCategory(cat) {
   renderMenu();
 }
 
-// 3. 渲染菜单列表
+// 3. 渲染前台菜单列表（下架菜品变灰禁用，不直接隐藏）
 function renderMenu() {
   const container = document.getElementById('menu-container');
   if (!container) return;
@@ -78,22 +78,33 @@ function renderMenu() {
     return;
   }
 
-  container.innerHTML = filtered.map(item => `
-    <div class="bg-white p-3 rounded-xl shadow-sm flex justify-between items-center border border-gray-100">
-      <div class="flex-1 pr-2">
-        <div class="font-bold text-gray-800 text-sm leading-snug">${item.name_fr}</div>
-        <div class="text-xs text-gray-500 font-normal mt-1">${item.name_zh}</div>
-        <div class="text-green-600 font-extrabold text-base mt-1.5">${item.price} €</div>
+  container.innerHTML = filtered.map(item => {
+    const isAvailable = item.is_available !== false; // 默认未设定的按 true 处理
+
+    return `
+      <div class="bg-white p-3 rounded-xl shadow-sm flex justify-between items-center border border-gray-100 ${!isAvailable ? 'opacity-50 grayscale' : ''}">
+        <div class="flex-1 pr-2">
+          <div class="font-bold text-gray-800 text-sm leading-snug">
+            ${item.name_fr}
+            ${!isAvailable ? '<span class="ml-2 text-[10px] bg-gray-200 text-gray-600 px-1.5 py-0.5 rounded font-normal">Épuisé / 已售罄</span>' : ''}
+          </div>
+          <div class="text-xs text-gray-500 font-normal mt-1">${item.name_zh}</div>
+          <div class="text-green-600 font-extrabold text-base mt-1.5">${item.price} €</div>
+        </div>
+        <div class="flex items-center gap-2">
+          ${cart[item.id] ? `
+            <button type="button" onclick="updateCart('${item.id}', -1)" class="w-7 h-7 bg-gray-100 text-gray-700 rounded-full font-bold flex items-center justify-center active:scale-90">-</button>
+            <span class="text-sm font-bold w-4 text-center">${cart[item.id]}</span>
+          ` : ''}
+          <button type="button" 
+            ${!isAvailable ? 'disabled' : `onclick="updateCart('${item.id}', 1)"`} 
+            class="w-7 h-7 ${isAvailable ? 'bg-green-500 text-white shadow-md active:scale-90' : 'bg-gray-300 text-gray-500 cursor-not-allowed'} rounded-full font-bold flex items-center justify-center">
+            +
+          </button>
+        </div>
       </div>
-      <div class="flex items-center gap-2">
-        ${cart[item.id] ? `
-          <button onclick="updateCart('${item.id}', -1)" class="w-7 h-7 bg-gray-100 text-gray-700 rounded-full font-bold flex items-center justify-center active:scale-90">-</button>
-          <span class="text-sm font-bold w-4 text-center">${cart[item.id]}</span>
-        ` : ''}
-        <button onclick="updateCart('${item.id}', 1)" class="w-7 h-7 bg-green-500 text-white rounded-full font-bold flex items-center justify-center shadow-md active:scale-90">+</button>
-      </div>
-    </div>
-  `).join('');
+    `;
+  }).join('');
 }
 
 // 4. 更新购物车
@@ -134,7 +145,7 @@ function closeCheckoutModal() {
   document.getElementById('checkout-modal').classList.add('hidden');
 }
 
-// 6. 提交订单（含日期、时段）
+// 6. 提交订单
 async function submitOrder() {
   try {
     const dateSelect = document.getElementById('cust-date').value;
@@ -256,33 +267,30 @@ function handleSecretClick() {
   }
 }
 
-// 全局登錄狀態標記（預設未登錄）
+// 全局登录状态标记（预设未登录）
 let isAdminLoggedIn = false;
 
-// 後台切換（只需驗證一次密碼）
+// 后台切换（只需验证一次密码）
 function toggleMode(forceCheck = false) {
   const adminView = document.getElementById('admin-view');
   const customerView = document.getElementById('customer-view');
 
-  // 如果準備進入後台，且【尚未登錄】时，才跳出密碼彈窗
   if ((adminView.classList.contains('hidden') || forceCheck) && !isAdminLoggedIn) {
-    const password = prompt("🔐 Mot de passe Admin / 請輸入群主管理密碼：");
+    const password = prompt("🔐 Mot de passe Admin / 请输入群主管理密码：");
     if (password !== "8888") {
-      return alert("❌ Mot de passe incorrect / 密碼錯誤！");
+      return alert("❌ Mot de passe incorrect / 密码错误！");
     }
-    // 密碼正確，標記為已登錄状态
     isAdminLoggedIn = true;
   }
 
   adminView.classList.toggle('hidden');
   customerView.classList.toggle('hidden');
 
-  // 進入後台時加載數據
   if (!adminView.classList.contains('hidden')) {
     fetchOrders();
     supabaseClient.channel('public:orders')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'orders' }, payload => {
-        alert('🔔 Nouvelle commande reçue ! / 收到新訂單！');
+        alert('🔔 Nouvelle commande reçue ! / 收到新订单！');
         fetchOrders();
       }).subscribe();
   }
@@ -348,17 +356,14 @@ async function fetchOrders() {
   `).join('');
 }
 
-// 获取后台菜单列表（直接优先复用 menuData，完美解决显示空白问题）
+// 渲染后台菜单列表（阻止默认跳转、安全保存列表项）
 async function fetchAdminMenu() {
   const container = document.getElementById('admin-menu-list');
   if (!container) return;
 
-  // 如果本地没有 menuData，先去拉取一次
   if (!menuData || menuData.length === 0) {
     const { data } = await supabaseClient.from('menu_items').select('*').order('created_at', { ascending: false });
-    if (data && data.length > 0) {
-      menuData = data;
-    }
+    if (data) menuData = data;
   }
 
   if (!menuData || menuData.length === 0) {
@@ -366,33 +371,43 @@ async function fetchAdminMenu() {
     return;
   }
 
-  container.innerHTML = menuData.map(item => `
-    <div class="bg-white p-3 rounded-xl border flex justify-between items-center shadow-sm">
-      <div class="flex-1 pr-2">
-        <div class="font-bold text-gray-800 text-xs">${item.name_fr || ''} (${item.name_zh || ''})</div>
-        <div class="text-green-600 font-extrabold text-xs mt-0.5">${item.price} € <span class="text-gray-400 font-normal">| ${item.category || 'Viandes'}</span></div>
+  container.innerHTML = menuData.map(item => {
+    const isAvailable = item.is_available !== false;
+    return `
+      <div class="bg-white p-3 rounded-xl border flex justify-between items-center shadow-sm">
+        <div class="flex-1 pr-2">
+          <div class="font-bold text-gray-800 text-xs">${item.name_fr || ''} (${item.name_zh || ''})</div>
+          <div class="text-green-600 font-extrabold text-xs mt-0.5">${item.price} € <span class="text-gray-400 font-normal">| ${item.category || 'Viandes'}</span></div>
+        </div>
+        <div class="flex items-center gap-2">
+          <!-- 上/下架按钮：显式 type="button"，阻止冒泡与页面重载 -->
+          <button type="button" onclick="toggleDishAvailability(event, '${item.id}', ${!isAvailable})" class="px-2.5 py-1 rounded text-[10px] font-bold transition ${isAvailable ? 'bg-green-100 text-green-700 hover:bg-green-200' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}">
+            ${isAvailable ? 'En vente / 上架中' : 'Masqué / 已下架'}
+          </button>
+          <button type="button" onclick="openDishModal('${item.id}')" class="bg-orange-100 text-orange-600 px-2 py-1 rounded text-[10px] font-bold">
+            Modifier / 编辑
+          </button>
+        </div>
       </div>
-      <div class="flex items-center gap-2">
-        <!-- 上/下架开关按钮 -->
-        <button onclick="toggleDishAvailability('${item.id}', ${!item.is_available})" class="px-2 py-1 rounded text-[10px] font-bold ${item.is_available ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-400'}">
-          ${item.is_available ? 'En vente / 上架中' : 'Masqué / 已下架'}
-        </button>
-        <!-- 编辑按钮 -->
-        <button onclick="openDishModal('${item.id}')" class="bg-orange-100 text-orange-600 px-2 py-1 rounded text-[10px] font-bold">
-          Modifier / 编辑
-        </button>
-      </div>
-    </div>
-  `).join('');
+    `;
+  }).join('');
 }
 
-async function toggleDishAvailability(id, newStatus) {
+// 上下架状态无刷新切换
+async function toggleDishAvailability(event, id, newStatus) {
+  if (event) event.stopPropagation(); // 阻止事件冒泡防止引发页面跳转或提交
+  
   const { error } = await supabaseClient.from('menu_items').update({ is_available: newStatus }).eq('id', id);
   if (error) {
     alert('修改状态失败: ' + error.message);
   } else {
+    // 局部更新变量
+    const target = menuData.find(m => m.id === id);
+    if (target) target.is_available = newStatus;
+
+    // 重新渲染后台与前台界面（不刷新页面）
     fetchAdminMenu();
-    fetchMenu();
+    renderMenu();
   }
 }
 
@@ -450,8 +465,11 @@ async function saveDish() {
     alert('保存失败: ' + res.error.message);
   } else {
     closeDishModal();
+    // 重新拉取最新列表
+    const { data } = await supabaseClient.from('menu_items').select('*').order('created_at', { ascending: false });
+    if (data) menuData = data;
     fetchAdminMenu();
-    fetchMenu();
+    renderMenu();
   }
 }
 
