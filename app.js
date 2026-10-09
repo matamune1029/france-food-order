@@ -340,26 +340,36 @@ async function fetchOrders() {
   `).join('');
 }
 
+// 获取后台菜单列表（直接优先复用 menuData，完美解决显示空白问题）
 async function fetchAdminMenu() {
-  const { data, error } = await supabaseClient.from('menu_items').select('*').order('created_at', { ascending: false });
   const container = document.getElementById('admin-menu-list');
   if (!container) return;
 
-  if (error || !data || data.length === 0) {
+  // 如果本地没有 menuData，先去拉取一次
+  if (!menuData || menuData.length === 0) {
+    const { data } = await supabaseClient.from('menu_items').select('*').order('created_at', { ascending: false });
+    if (data && data.length > 0) {
+      menuData = data;
+    }
+  }
+
+  if (!menuData || menuData.length === 0) {
     container.innerHTML = '<div class="text-gray-400 text-xs text-center py-4">Aucun plat / 暂无菜品</div>';
     return;
   }
 
-  container.innerHTML = data.map(item => `
+  container.innerHTML = menuData.map(item => `
     <div class="bg-white p-3 rounded-xl border flex justify-between items-center shadow-sm">
       <div class="flex-1 pr-2">
-        <div class="font-bold text-gray-800 text-xs">${item.name_fr} (${item.name_zh})</div>
+        <div class="font-bold text-gray-800 text-xs">${item.name_fr || ''} (${item.name_zh || ''})</div>
         <div class="text-green-600 font-extrabold text-xs mt-0.5">${item.price} € <span class="text-gray-400 font-normal">| ${item.category || 'Viandes'}</span></div>
       </div>
       <div class="flex items-center gap-2">
+        <!-- 上/下架开关按钮 -->
         <button onclick="toggleDishAvailability('${item.id}', ${!item.is_available})" class="px-2 py-1 rounded text-[10px] font-bold ${item.is_available ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-400'}">
           ${item.is_available ? 'En vente / 上架中' : 'Masqué / 已下架'}
         </button>
+        <!-- 编辑按钮 -->
         <button onclick="openDishModal('${item.id}')" class="bg-orange-100 text-orange-600 px-2 py-1 rounded text-[10px] font-bold">
           Modifier / 编辑
         </button>
