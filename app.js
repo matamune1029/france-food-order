@@ -4,10 +4,10 @@ const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 let cart = {};
 let menuData = [];
-let currentCategory = 'Specialite'; // 默认停留在“每日特色”
+let currentCategory = 'Specialite'; // 預設停留在“每日特色”
 let lastOrderDetails = null;
 
-// 1. 标准分类标签清单（彻底移除“全部”，保留 6 个独立大类）
+// 1. 標準分類標籤清單（6 個獨立大類）
 const fixedCategories = [
   { key: 'Specialite', fr: 'Spécialité', zh: '每日特色' },
   { key: 'Viandes', fr: 'Viandes', zh: '葷菜' },
@@ -17,43 +17,32 @@ const fixedCategories = [
   { key: 'Staple', fr: 'Riz/Nouilles', zh: '主食' }
 ];
 
-// 2. 归一化匹配逻辑
+// 2. 歸一化匹配邏輯
 function normalizeCategory(rawCat, nameZh = '', nameFr = '') {
   const cat = (rawCat || '').toString().toLowerCase().trim();
   const zh = (nameZh || '').toString().toLowerCase();
   const fr = (nameFr || '').toString().toLowerCase();
 
-  // 1. 每日特色
   if (cat.includes('特色') || cat.includes('每日') || cat.includes('spécialité') || cat.includes('specialite') || cat.includes('special')) {
     return 'Specialite';
   }
-
-  // 2. 海鲜类
   if (cat.includes('海鮮') || cat.includes('海鲜') || cat.includes('魚') || cat.includes('鱼') || cat.includes('蝦') || cat.includes('虾') || 
       cat.includes('poisson') || cat.includes('crevette') || cat.includes('mer') || zh.includes('魚') || zh.includes('鱼') || zh.includes('蝦')) {
     return 'Seafood';
   }
-
-  // 3. 牛肉类
   if (cat.includes('牛肉') || cat.includes('牛') || cat.includes('bœuf') || cat.includes('boeuf') || cat.includes('beef') || zh.includes('牛')) {
     return 'Beef';
   }
-
-  // 4. 素菜
   if (cat.includes('素') || cat.includes('légume') || cat.includes('legume')) {
     return 'Legumes';
   }
-
-  // 5. 主食
   if (cat.includes('主食') || cat.includes('riz') || cat.includes('nouille') || cat.includes('rice') || cat.includes('noodle')) {
     return 'Staple';
   }
-
-  // 6. 默认归为 荤菜
   return 'Viandes';
 }
 
-// 3. 载入所有菜单
+// 3. 載入所有菜單
 async function fetchMenu() {
   try {
     const { data, error } = await supabaseClient.from('menu_items').select('*');
@@ -68,7 +57,7 @@ async function fetchMenu() {
   }
 }
 
-// 4. 渲染左侧分类侧边栏
+// 4. 渲染左側分類側邊欄
 function renderCategoryBar() {
   const categoryContainer = document.getElementById('category-bar');
   if (!categoryContainer) return;
@@ -91,23 +80,25 @@ function switchCategory(catKey) {
   renderMenu();
 }
 
-// 5. 渲染前台菜品列表
+// 5. 渲染前台菜單列表（整合庫存 stock 控制与自動沉底）
 function renderMenu() {
   const container = document.getElementById('menu-container');
   if (!container) return;
 
-  // 根据当前选中的分类归一化过滤菜品
   let listToDisplay = menuData.filter(i => {
     return normalizeCategory(i.category, i.name_zh, i.name_fr) === currentCategory;
   });
 
-  // 排序：上架在上（按 sort_order 升序），下架的自动沉底
+  // 排序：有庫存且上架在上（按 sort_order 升序），售罄(stock <= 0 或 is_available === false) 自動沉底
   listToDisplay.sort((a, b) => {
-    const availA = a.is_available !== false ? 1 : 0;
-    const availB = b.is_available !== false ? 1 : 0;
+    const stockA = typeof a.stock === 'number' ? a.stock : 999;
+    const stockB = typeof b.stock === 'number' ? b.stock : 999;
+    
+    const availA = (a.is_available !== false && stockA > 0) ? 1 : 0;
+    const availB = (b.is_available !== false && stockB > 0) ? 1 : 0;
 
     if (availA !== availB) {
-      return availB - availA;
+      return availB - availA; // 可售(1) 優先於 售罄(0)
     }
     return (a.sort_order || 99) - (b.sort_order || 99);
   });
@@ -118,7 +109,13 @@ function renderMenu() {
   }
 
   container.innerHTML = listToDisplay.map(item => {
-    const isAvailable = item.is_available !== false;
+    const maxStock = typeof item.stock === 'number' ? item.stock : 999;
+    const currentCartQty = cart[item.id] || 0;
+    
+    // 判斷是否可用（手動下架 或 庫存<=0 均視為售罄）
+    const isAvailable = (item.is_available !== false) && (maxStock > 0);
+    // 是否已達庫存上限（加號置灰禁用）
+    const isMaxReached = currentCartQty >= maxStock;
 
     return `
       <div class="bg-white p-3 rounded-xl shadow-sm flex justify-between items-center border border-gray-100 ${!isAvailable ? 'opacity-50 grayscale' : ''}">
@@ -128,16 +125,19 @@ function renderMenu() {
             ${!isAvailable ? '<span class="ml-2 text-[10px] bg-gray-200 text-gray-600 px-1.5 py-0.5 rounded font-normal">Épuisé / 已售罄</span>' : ''}
           </div>
           <div class="text-xs text-gray-500 font-normal mt-1">${item.name_zh || ''}</div>
-          <div class="text-green-600 font-extrabold text-base mt-1.5">${item.price} €</div>
+          <div class="flex items-center gap-2 mt-1.5">
+            <span class="text-green-600 font-extrabold text-base">${item.price} €</span>
+            ${isAvailable && maxStock < 50 ? `<span class="text-[10px] text-orange-600 bg-orange-50 px-1.5 py-0.5 rounded border border-orange-100">Reste: ${maxStock}</span>` : ''}
+          </div>
         </div>
         <div class="flex items-center gap-2">
-          ${cart[item.id] ? `
+          ${currentCartQty > 0 ? `
             <button type="button" onclick="updateCart('${item.id}', -1)" class="w-7 h-7 bg-gray-100 text-gray-700 rounded-full font-bold flex items-center justify-center active:scale-90">-</button>
-            <span class="text-sm font-bold w-4 text-center">${cart[item.id]}</span>
+            <span class="text-sm font-bold w-4 text-center">${currentCartQty}</span>
           ` : ''}
           <button type="button" 
-            ${!isAvailable ? 'disabled' : `onclick="updateCart('${item.id}', 1)"`} 
-            class="w-7 h-7 ${isAvailable ? 'bg-green-500 text-white shadow-md active:scale-90' : 'bg-gray-300 text-gray-500 cursor-not-allowed'} rounded-full font-bold flex items-center justify-center">
+            ${(!isAvailable || isMaxReached) ? 'disabled' : `onclick="updateCart('${item.id}', 1)"`} 
+            class="w-7 h-7 ${isAvailable && !isMaxReached ? 'bg-green-500 text-white shadow-md active:scale-90' : 'bg-gray-300 text-gray-400 cursor-not-allowed'} rounded-full font-bold flex items-center justify-center">
             +
           </button>
         </div>
@@ -146,18 +146,27 @@ function renderMenu() {
   }).join('');
 }
 
-// 6. 更新购物车
+// 6. 更新購物車（含庫存上限防超賣保護）
 function updateCart(id, delta) {
-  cart[id] = (cart[id] || 0) + delta;
+  const item = menuData.find(i => i.id === id);
+  const maxStock = item && typeof item.stock === 'number' ? item.stock : 999;
+  
+  const currentQty = cart[id] || 0;
+  if (delta > 0 && currentQty >= maxStock) {
+    alert(`Stock insuffisant ! Il ne reste que ${maxStock} portion(s). / 庫存不足，該菜品僅剩 ${maxStock} 份！`);
+    return;
+  }
+
+  cart[id] = currentQty + delta;
   if (cart[id] <= 0) delete cart[id];
   renderMenu();
 
   let total = 0;
   let count = 0;
   for (let itemId in cart) {
-    const item = menuData.find(i => i.id === itemId);
-    if (item) {
-      total += item.price * cart[itemId];
+    const menuItem = menuData.find(i => i.id === itemId);
+    if (menuItem) {
+      total += menuItem.price * cart[itemId];
       count += cart[itemId];
     }
   }
@@ -174,7 +183,7 @@ function updateCart(id, delta) {
   }
 }
 
-// 7. 弹窗与结算逻辑
+// 7. 彈窗與結算邏輯
 function openCheckoutModal() {
   if (Object.keys(cart).length === 0) return alert('Votre panier est vide ! / 購物車是空的！');
   document.getElementById('checkout-modal').classList.remove('hidden');
@@ -184,6 +193,7 @@ function closeCheckoutModal() {
   document.getElementById('checkout-modal').classList.add('hidden');
 }
 
+// 提交訂單（自動扣減庫存 stock，剩餘 0 則自動標記下架）
 async function submitOrder() {
   try {
     const dateSelect = document.getElementById('cust-date').value;
@@ -205,9 +215,11 @@ async function submitOrder() {
 
     if (!address) return alert('Veuillez entrer votre adresse de livraison ! / 請填寫送餐地址！');
 
+    // 1. 整理訂單項目
     const items = Object.keys(cart).map(id => {
       const item = menuData.find(i => i.id === id);
       return { 
+        id,
         name_fr: item ? item.name_fr : 'Plat', 
         name_zh: item ? item.name_zh : '菜品', 
         qty: cart[id], 
@@ -222,6 +234,7 @@ async function submitOrder() {
     const fullContactInfo = `[${deliverySlot}] ${phone} | Adresse: ${address}${note ? ' | Note: ' + note : ''}`;
     const dbItems = items.map(i => ({ name: `${i.name_fr} (${i.name_zh})`, qty: i.qty, price: i.price }));
 
+    // 2. 寫入 orders 數據庫
     const { error } = await supabaseClient.from('orders').insert([
       { customer_name: name, phone: fullContactInfo, items: dbItems, total_price: total }
     ]);
@@ -230,6 +243,26 @@ async function submitOrder() {
       console.error('Supabase Error:', error);
       alert('Échec / 數據庫寫入錯誤: ' + error.message);
       return;
+    }
+
+    // 3. 【核心升級】：自動扣減 Supabase 菜品庫存 stock
+    for (let cartItem of items) {
+      const targetDish = menuData.find(m => m.id === cartItem.id);
+      if (targetDish) {
+        const currentStock = typeof targetDish.stock === 'number' ? targetDish.stock : 999;
+        const newStock = Math.max(0, currentStock - cartItem.qty);
+        const newAvailable = newStock > 0 ? (targetDish.is_available !== false) : false; // 剩餘 0 則自動標記下架
+
+        // 寫入 Supabase 更新庫存
+        await supabaseClient
+          .from('menu_items')
+          .update({ stock: newStock, is_available: newAvailable })
+          .eq('id', cartItem.id);
+
+        // 同步本地數據
+        targetDish.stock = newStock;
+        targetDish.is_available = newAvailable;
+      }
     }
 
     lastOrderDetails = { orderId, deliverySlot, name, phone, address, note, items, total };
@@ -281,7 +314,7 @@ function closeReceiptModal() {
   renderMenu();
 }
 
-// 8. 后台管理与暗号
+// 8. 後台管理與暗號
 let secretClickCount = 0;
 let secretClickTimer = null;
 
@@ -350,40 +383,51 @@ function switchAdminTab(tab) {
 }
 
 async function fetchOrders() {
-  const { data, error } = await supabaseClient.from('orders').select('*').order('created_at', { ascending: false });
-  
-  if (error) {
-    console.error('读取订单失败 Error:', error);
-    alert('读取订单失败: ' + error.message); // 如果是 RLS 权限问题，这里会直接弹窗报错提示
-    return;
-  }
-
   const container = document.getElementById('order-list');
   if (!container) return;
 
-  if (!data || data.length === 0) {
-    container.innerHTML = '<div class="text-gray-400 text-xs text-center py-4">Aucune commande / 暂无订单</div>';
-    return;
-  }
+  container.innerHTML = '<div class="text-gray-400 text-xs text-center py-4">Chargement... / 讀取中...</div>';
 
-  container.innerHTML = data.map(o => `
-    <div class="bg-white p-3.5 rounded-xl border-l-4 border-orange-500 shadow-sm space-y-2">
-      <div class="flex justify-between font-bold text-gray-800">
-        <span>👤 ${o.customer_name}</span>
-        <span class="text-green-600 text-lg">${o.total_price} €</span>
+  try {
+    const { data, error } = await supabaseClient
+      .from('orders')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error('Fetch Orders Error:', error);
+      container.innerHTML = `<div class="text-red-500 text-xs text-center py-4">讀取失敗: ${error.message}</div>`;
+      return;
+    }
+
+    if (!data || data.length === 0) {
+      container.innerHTML = '<div class="text-gray-400 text-xs text-center py-4">Aucune commande / 暫無訂單</div>';
+      return;
+    }
+
+    container.innerHTML = data.map(o => `
+      <div class="bg-white p-3.5 rounded-xl border-l-4 border-orange-500 shadow-sm space-y-2">
+        <div class="flex justify-between font-bold text-gray-800">
+          <span>👤 ${o.customer_name || '匿名顧客'}</span>
+          <span class="text-green-600 text-lg">${(o.total_price || 0).toFixed(2)} €</span>
+        </div>
+        <div class="text-xs font-bold text-orange-600 bg-orange-50 p-1.5 rounded border border-orange-100 break-all">
+          📍 ${o.phone || '無聯繫資訊'}
+        </div>
+        <div class="text-[10px] text-gray-400">${o.created_at ? new Date(o.created_at).toLocaleString() : ''}</div>
+        <ul class="text-xs bg-gray-50 p-2.5 rounded-lg border space-y-1">
+          ${Array.isArray(o.items) ? o.items.map(i => `<li class="flex justify-between"><span>${i.name || '菜品'}</span><span class="font-bold">x${i.qty || 1}</span></li>`).join('') : '<li class="text-gray-400">無明細</li>'}
+        </ul>
       </div>
-      <div class="text-xs font-bold text-orange-600 bg-orange-50 p-1.5 rounded border border-orange-100">
-        📍 配送与联系资讯: ${o.phone || 'N/A'}
-      </div>
-      <div class="text-[10px] text-gray-400">${o.created_at ? new Date(o.created_at).toLocaleString() : ''}</div>
-      <ul class="text-xs bg-gray-50 p-2.5 rounded-lg border space-y-1">
-        ${o.items ? o.items.map(i => `<li class="flex justify-between"><span>${i.name}</span><span class="font-bold">x${i.qty}</span></li>`).join('') : ''}
-      </ul>
-    </div>
-  `).join('');
+    `).join('');
+
+  } catch (err) {
+    console.error('Unexpected Error:', err);
+    container.innerHTML = `<div class="text-red-500 text-xs text-center py-4">系統異常: ${err.message}</div>`;
+  }
 }
 
-// 渲染后台菜单列表（按大类分组 + 同大类内按 sort_order 排序）
+// 渲染後台菜單列表（展示庫存 stock 剩餘量）
 async function fetchAdminMenu() {
   const container = document.getElementById('admin-menu-list');
   if (!container) return;
@@ -394,58 +438,44 @@ async function fetchAdminMenu() {
   }
 
   if (!menuData || menuData.length === 0) {
-    container.innerHTML = '<div class="text-gray-400 text-xs text-center py-4">Aucun plat / 暂无菜品</div>';
+    container.innerHTML = '<div class="text-gray-400 text-xs text-center py-4">Aucun plat / 暫無菜品</div>';
     return;
   }
 
-  // 定义后台大类排序权重
   const categoryPriority = {
-    'Specialite': 1,
-    'Viandes': 2,
-    'Seafood': 3,
-    'Beef': 4,
-    'Legumes': 5,
-    'Staple': 6
+    'Specialite': 1, 'Viandes': 2, 'Seafood': 3, 'Beef': 4, 'Legumes': 5, 'Staple': 6
   };
 
-  // 分类名称对照表（用于后台显示的分类标签）
   const categoryLabelMap = {
-    'Specialite': '🌟 每日特色',
-    'Viandes': '🥩 荤菜',
-    'Seafood': '🐟 海鲜类',
-    'Beef': '🐂 牛肉类',
-    'Legumes': '🥬 素菜',
-    'Staple': '🍚 主食'
+    'Specialite': '🌟 每日特色', 'Viandes': '🥩 葷菜', 'Seafood': '🐟 海鮮類',
+    'Beef': '🐂 牛肉類', 'Legumes': '🥬 素菜', 'Staple': '🍚 主食'
   };
 
-  // 1. 先按“大类顺序”排，2. 同大类内部按“sort_order”升序排
   menuData.sort((a, b) => {
     const catAKey = normalizeCategory(a.category, a.name_zh, a.name_fr);
     const catBKey = normalizeCategory(b.category, b.name_zh, b.name_fr);
-
     const priorityA = categoryPriority[catAKey] || 99;
     const priorityB = categoryPriority[catBKey] || 99;
 
     if (priorityA !== priorityB) {
-      return priorityA - priorityB; // 大类排序
+      return priorityA - priorityB;
     }
-    return (a.sort_order || 99) - (b.sort_order || 99); // 同大类内部按排序号升序
+    return (a.sort_order || 99) - (b.sort_order || 99);
   });
 
-  // 渲染列表并展示大类分割标签
   let lastCategoryKey = null;
   let htmlContent = '';
 
   menuData.forEach(item => {
-    const isAvailable = item.is_available !== false;
+    const stockVal = typeof item.stock === 'number' ? item.stock : 999;
+    const isAvailable = (item.is_available !== false) && (stockVal > 0);
     const normKey = normalizeCategory(item.category, item.name_zh, item.name_fr);
 
-    // 当切换到下一个大类时，插入一个大类标题分割线
     if (normKey !== lastCategoryKey) {
       lastCategoryKey = normKey;
       htmlContent += `
         <div class="pt-3 pb-1 text-xs font-bold text-gray-500 border-b border-gray-200 flex items-center justify-between">
-          <span>${categoryLabelMap[normKey] || '其他分类'}</span>
+          <span>${categoryLabelMap[normKey] || '其他分類'}</span>
         </div>
       `;
     }
@@ -457,9 +487,9 @@ async function fetchAdminMenu() {
             <span class="bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded mr-1 font-mono">#${item.sort_order || 99}</span>
             ${item.name_fr || ''} (${item.name_zh || ''})
           </div>
-          <div class="text-green-600 font-extrabold text-xs mt-1">
-            ${item.price} € 
-            <span class="text-gray-400 font-normal text-[10px] ml-1">| ${item.category || '未归类'}</span>
+          <div class="text-green-600 font-extrabold text-xs mt-1 flex items-center gap-2">
+            <span>${item.price} €</span>
+            <span class="text-gray-500 font-normal text-[10px] bg-gray-100 px-1.5 py-0.5 rounded">庫存: ${stockVal}</span>
           </div>
         </div>
         <div class="flex items-center gap-1.5">
@@ -467,10 +497,10 @@ async function fetchAdminMenu() {
             ${isAvailable ? 'En vente / 上架中' : 'Masqué / 已下架'}
           </button>
           <button type="button" onclick="openDishModal('${item.id}')" class="bg-orange-100 text-orange-600 px-2 py-1 rounded text-[10px] font-bold hover:bg-orange-200">
-            Modifier / 编辑
+            Modifier / 編輯
           </button>
           <button type="button" onclick="deleteDish(event, '${item.id}', '${item.name_zh}')" class="bg-red-100 text-red-600 px-2 py-1 rounded text-[10px] font-bold hover:bg-red-200">
-            Supprimer / 删除
+            Supprimer / 刪除
           </button>
         </div>
       </div>
@@ -479,6 +509,7 @@ async function fetchAdminMenu() {
 
   container.innerHTML = htmlContent;
 }
+
 async function toggleDishAvailability(event, id, newStatus) {
   if (event) event.stopPropagation();
   
@@ -499,6 +530,7 @@ function openDishModal(id = null) {
   const title = document.getElementById('dish-modal-title');
   if (!modal) return;  
   const sortInput = document.getElementById('dish-sort');
+  const stockInput = document.getElementById('dish-stock');
 
   if (id) {
     const item = menuData.find(m => m.id === id);
@@ -509,8 +541,8 @@ function openDishModal(id = null) {
     document.getElementById('dish-name-zh').value = item.name_zh || '';
     document.getElementById('dish-price').value = item.price || '';
     if (sortInput) sortInput.value = item.sort_order || 1;
+    if (stockInput) stockInput.value = typeof item.stock === 'number' ? item.stock : 99;
     
-    // 下拉菜单匹配
     const normKey = normalizeCategory(item.category, item.name_zh, item.name_fr);
     const catSelect = document.getElementById('dish-category');
     if (catSelect) {
@@ -528,6 +560,7 @@ function openDishModal(id = null) {
     document.getElementById('dish-name-zh').value = '';
     document.getElementById('dish-price').value = '';
     if (sortInput) sortInput.value = '1';
+    if (stockInput) stockInput.value = '99';
     document.getElementById('dish-category').value = '每日特色';
   }
   modal.classList.remove('hidden');
@@ -544,7 +577,10 @@ async function saveDish() {
   const name_zh = document.getElementById('dish-name-zh').value.trim();
   const price = parseFloat(document.getElementById('dish-price').value);
   const sortInput = document.getElementById('dish-sort');
+  const stockInput = document.getElementById('dish-stock');
+
   const sort_order = sortInput ? (parseInt(sortInput.value) || 1) : 1;
+  const stock = stockInput ? (parseInt(stockInput.value) >= 0 ? parseInt(stockInput.value) : 99) : 99;
   const category = document.getElementById('dish-category').value;
 
   if (!name_fr || !name_zh || isNaN(price)) {
@@ -556,8 +592,9 @@ async function saveDish() {
     name_zh, 
     price, 
     sort_order,
+    stock,
     category, 
-    is_available: true 
+    is_available: stock > 0 
   };
 
   let res;
