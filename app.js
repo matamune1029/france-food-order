@@ -1,167 +1,832 @@
-<!DOCTYPE html>
-<html lang="fr">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Cici Cuisine - Commande en ligne</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <!-- 引入 html2canvas 插件（用于把小票网页转成图片下载） -->
-  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
-</head>
-<body class="bg-gray-100 flex flex-col h-screen overflow-hidden font-sans">
+const SUPABASE_URL = 'https://zcivplddxtaqlefrtajr.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_eQG7FVgOU36Z8edfnrf27w_5A7tlNiq';
+const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-  <!-- 1. 頂部店鋪招牌 -->
-  <header class="bg-gradient-to-r from-red-600 to-orange-500 text-white p-4 shadow-md flex-shrink-0 select-none">
-    <div class="flex justify-between items-start">
-      <div>
-        <h1 onclick="handleSecretClick()" class="text-xl font-bold tracking-wide cursor-pointer active:opacity-80">Cici Cuisine</h1>
-        <div class="space-y-0.5 mt-1">
-          <p class="text-xs opacity-90">🕒 Livraison | 配送</p>
-          <p class="text-[11px] opacity-80 font-medium">🕒 12:00 - 14:00 (Lundi - Samedi)</p>
+let cart = {};
+let menuData = [];
+let rawOrders = []; // 暫存原始訂單數據
+let currentCategory = 'Specialite';
+let currentOrderTab = 'all'; // 訂單時間標籤: 'all', 'today', 'tomorrow'
+let lastOrderDetails = null;
+
+// 1. 標準分類標籤清單
+const fixedCategories = [
+  { key: 'Specialite', fr: 'Spécialité', zh: '每日特色' },
+  { key: 'Viandes', fr: 'Viandes', zh: '葷菜' },
+  { key: 'Seafood', fr: 'Poissons/Mer', zh: '海鮮類' },
+  { key: 'Beef', fr: 'Bœuf', zh: '牛肉類' },
+  { key: 'Legumes', fr: 'Légumes', zh: '素菜' },
+  { key: 'Staple', fr: 'Riz/Nouilles', zh: '主食' }
+];
+
+// 2. 歸一化匹配邏輯
+function normalizeCategory(rawCat, nameZh = '', nameFr = '') {
+  const cat = (rawCat || '').toString().toLowerCase().trim();
+  const zh = (nameZh || '').toString().toLowerCase();
+  const fr = (nameFr || '').toString().toLowerCase();
+
+  if (cat.includes('特色') || cat.includes('每日') || cat.includes('spécialité') || cat.includes('specialite') || cat.includes('special')) {
+    return 'Specialite';
+  }
+  if (cat.includes('海鮮') || cat.includes('海鲜') || cat.includes('魚') || cat.includes('鱼') || cat.includes('蝦') || cat.includes('虾') || 
+      cat.includes('poisson') || cat.includes('crevette') || cat.includes('mer') || zh.includes('魚') || zh.includes('鱼') || zh.includes('蝦')) {
+    return 'Seafood';
+  }
+  if (cat.includes('牛肉') || cat.includes('牛') || cat.includes('bœuf') || cat.includes('boeuf') || cat.includes('beef') || zh.includes('牛')) {
+    return 'Beef';
+  }
+  if (cat.includes('素') || cat.includes('légume') || cat.includes('legume')) {
+    return 'Legumes';
+  }
+  if (cat.includes('主食') || cat.includes('riz') || cat.includes('nouille') || cat.includes('rice') || cat.includes('noodle')) {
+    return 'Staple';
+  }
+  return 'Viandes';
+}
+
+// 3. 載入所有菜單
+async function fetchMenu() {
+  try {
+    const { data, error } = await supabaseClient.from('menu_items').select('*');
+    if (error) console.error('Menu Fetch Error:', error);
+    menuData = data || [];
+    renderCategoryBar();
+    renderMenu();
+  } catch (err) {
+    console.error('Fetch Menu Failure:', err);
+    const container = document.getElementById('menu-container');
+    if (container) container.innerHTML = '<div class="text-center text-red-500 py-10">Erreur de chargement / 菜單載入失敗</div>';
+  }
+}
+
+// 4. 渲染左側分類側邊欄
+function renderCategoryBar() {
+  const categoryContainer = document.getElementById('category-bar');
+  if (!categoryContainer) return;
+
+  categoryContainer.innerHTML = fixedCategories.map(cat => {
+    const isSelected = currentCategory === cat.key;
+    return `
+      <button type="button" onclick="switchCategory('${cat.key}')" 
+        class="w-full py-3 px-1 text-center border-b border-gray-300 transition ${isSelected ? 'bg-white text-green-600 font-bold border-l-4 border-l-green-500' : 'text-gray-600'}">
+        <div class="text-xs font-bold leading-tight">${cat.fr}</div>
+        <div class="text-[10px] text-gray-400 font-normal mt-0.5">${cat.zh}</div>
+      </button>
+    `;
+  }).join('');
+}
+
+function switchCategory(catKey) {
+  currentCategory = catKey;
+  renderCategoryBar();
+  renderMenu();
+}
+
+// 5. 渲染前台菜單列表
+function renderMenu() {
+  const container = document.getElementById('menu-container');
+  if (!container) return;
+
+  let listToDisplay = menuData.filter(i => {
+    return normalizeCategory(i.category, i.name_zh, i.name_fr) === currentCategory;
+  });
+
+  listToDisplay.sort((a, b) => {
+    const stockA = (a && typeof a.stock === 'number') ? a.stock : 99;
+    const stockB = (b && typeof b.stock === 'number') ? b.stock : 99;
+
+    const availA = (a.is_available !== false && stockA > 0) ? 1 : 0;
+    const availB = (b.is_available !== false && stockB > 0) ? 1 : 0;
+
+    if (availA !== availB) {
+      return availB - availA;
+    }
+    return (a.sort_order || 99) - (b.sort_order || 99);
+  });
+
+  if (listToDisplay.length === 0) {
+    container.innerHTML = '<div class="text-center text-gray-400 py-10">Aucun plat / 暫無菜品</div>';
+    return;
+  }
+
+  container.innerHTML = listToDisplay.map(item => {
+    const maxStock = (item && typeof item.stock === 'number') ? item.stock : 99;
+    const currentCartQty = cart[item.id] || 0;
+
+    const isAvailable = (item.is_available !== false) && (maxStock > 0);
+    const isMaxReached = currentCartQty >= maxStock;
+
+    const imgHtml = item.image_url 
+      ? `<img src="${item.image_url}" class="w-16 h-16 rounded-lg object-cover flex-shrink-0" alt="${item.name_zh}">`
+      : `<div class="w-16 h-16 rounded-lg bg-orange-50 border border-orange-100 flex items-center justify-center text-orange-400 font-bold text-xs flex-shrink-0">🍲</div>`;
+
+    return `
+      <div class="bg-white p-3 rounded-xl shadow-sm flex items-center gap-3 border border-gray-100 ${!isAvailable ? 'opacity-50 grayscale' : ''}">
+        ${imgHtml}
+        <div class="flex-1 min-w-0">
+          <div class="font-bold text-gray-800 text-sm leading-snug truncate">
+            ${item.name_fr || ''}
+            ${!isAvailable ? '<span class="ml-1 text-[10px] bg-gray-200 text-gray-600 px-1 py-0.5 rounded font-normal">Épuisé</span>' : ''}
+          </div>
+          <div class="text-xs text-gray-500 font-normal mt-0.5 truncate">${item.name_zh || ''}</div>
+          <div class="flex items-center gap-2 mt-1">
+            <span class="text-green-600 font-extrabold text-base">${item.price || 0} €</span>
+            ${isAvailable ? `<span class="text-[10px] text-orange-600 bg-orange-50 px-1.5 py-0.5 rounded border border-orange-100">Stock: ${maxStock}</span>` : ''}
+          </div>
         </div>
-      </div>
-      <div class="flex items-center gap-2">
-        <!-- 顧客「我的歷史訂單」按鈕 -->
-        <button type="button" onclick="openMyOrdersModal()" class="bg-white/20 hover:bg-white/30 text-white text-xs px-2.5 py-1.5 rounded-full border border-white/40 flex items-center gap-1 active:scale-95 transition">
-          📋 Mes Commandes / 我的訂單
-        </button>
-        <button id="admin-btn" onclick="toggleMode()" class="hidden bg-white/20 hover:bg-white/30 text-white text-xs px-2.5 py-1.5 rounded-full border border-white/40 transition">
-          Admin / 後台
-        </button>
-      </div>
-    </div>
-  </header>
-
-  <!-- 2. 顧客前台點餐界面 -->
-  <div id="customer-view" class="flex-1 flex overflow-hidden">
-    <!-- 左側分類側邊欄 -->
-    <div id="category-bar" class="w-24 bg-gray-200 border-r border-gray-300 overflow-y-auto flex-shrink-0">
-      <!-- 動態渲染分類 -->
-    </div>
-
-    <!-- 右側菜品列表 -->
-    <div id="menu-container" class="flex-1 p-3 overflow-y-auto space-y-3 pb-24">
-      <div class="text-center text-gray-400 py-10">Chargement du menu...</div>
-    </div>
-
-    <!-- 底部購物車結算欄 -->
-    <div class="fixed bottom-0 inset-x-0 bg-slate-800 text-white p-3 flex justify-between items-center shadow-2xl z-40 border-t border-slate-700">
-      <div class="flex items-center gap-3">
-        <div class="relative">
-          <button type="button" onclick="openCheckoutModal()" class="w-10 h-10 bg-green-500 rounded-full flex items-center justify-center font-bold text-lg active:scale-90 transition">
-            🛒
+        <div class="flex items-center gap-1.5 flex-shrink-0">
+          ${currentCartQty > 0 ? `
+            <button type="button" onclick="updateCart('${item.id}', -1)" class="w-7 h-7 bg-gray-100 text-gray-700 rounded-full font-bold flex items-center justify-center active:scale-90">-</button>
+            <span class="text-sm font-bold w-4 text-center">${currentCartQty}</span>
+          ` : ''}
+          <button type="button" 
+            ${(!isAvailable || isMaxReached) ? 'disabled' : `onclick="updateCart('${item.id}', 1)"`} 
+            class="w-7 h-7 ${isAvailable && !isMaxReached ? 'bg-green-500 text-white shadow-md active:scale-90' : 'bg-gray-300 text-gray-500 cursor-not-allowed'} rounded-full font-bold flex items-center justify-center">
+            +
           </button>
-          <span id="cart-badge" class="hidden absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold w-5 h-5 rounded-full flex items-center justify-center border-2 border-slate-800">0</span>
-        </div>
-        <div>
-          <div class="text-lg font-black text-green-400"><span id="total-price">0.00</span> €</div>
-          <div class="text-[10px] text-gray-400">Livraison à domicile</div>
         </div>
       </div>
-      <button type="button" onclick="openCheckoutModal()" class="bg-green-500 hover:bg-green-600 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow active:scale-95 transition">
-        Valider / 結算
-      </button>
-    </div>
-  </div>
+    `;
+  }).join('');
+}
 
-  <!-- 3. 下單彈窗 -->
-  <div id="checkout-modal" class="hidden fixed inset-0 bg-black/60 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
-    <div class="bg-white w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl p-5 space-y-4 max-h-[90vh] overflow-y-auto">
-      <div class="flex justify-between items-center border-b pb-3">
-        <h3 class="font-bold text-lg text-gray-800">Finaliser la commande / 確認訂單</h3>
-        <button type="button" onclick="closeCheckoutModal()" class="text-gray-400 text-xl font-bold">✕</button>
+// 6. 更新購物車
+function updateCart(id, delta) {
+  const item = menuData.find(i => i.id === id);
+  const maxStock = (item && typeof item.stock === 'number') ? item.stock : 99;
+
+  const currentQty = cart[id] || 0;
+  if (delta > 0 && currentQty >= maxStock) {
+    alert(`Stock insuffisant ! Il ne reste que ${maxStock} portion(s). / 庫存不足，該菜品僅剩 ${maxStock} 份！`);
+    return;
+  }
+
+  cart[id] = currentQty + delta;
+  if (cart[id] <= 0) delete cart[id];
+  renderMenu();
+
+  let total = 0;
+  let count = 0;
+  for (let itemId in cart) {
+    const menuItem = menuData.find(i => i.id === itemId);
+    if (menuItem) {
+      total += (menuItem.price || 0) * cart[itemId];
+      count += cart[itemId];
+    }
+  }
+
+  document.getElementById('total-price').innerText = total.toFixed(2);
+  document.getElementById('modal-total-price').innerText = total.toFixed(2);
+  
+  const badge = document.getElementById('cart-badge');
+  if (count > 0) {
+    badge.innerText = count;
+    badge.classList.remove('hidden');
+  } else {
+    badge.classList.add('hidden');
+  }
+}
+
+// 7. 彈窗與結算邏輯
+function openCheckoutModal() {
+  if (Object.keys(cart).length === 0) return alert('Votre panier est vide ! / 購物車是空的！');
+  document.getElementById('checkout-modal').classList.remove('hidden');
+}
+
+function closeCheckoutModal() {
+  document.getElementById('checkout-modal').classList.add('hidden');
+}
+
+async function submitOrder() {
+  try {
+    const dateSelect = document.getElementById('cust-date').value;
+    const timeSelect = document.getElementById('cust-time').value;
+    const name = document.getElementById('cust-name').value.trim();
+    const phone = document.getElementById('cust-phone').value.trim();
+    const address = document.getElementById('cust-address').value.trim();
+    const note = document.getElementById('cust-note').value.trim();
+
+    if (!dateSelect) return alert('Veuillez choisir le jour de livraison ! / 請選擇配送日期！');
+    if (!timeSelect) return alert('Veuillez choisir le créneau horaire ! / 請選擇配送時段！');
+    if (!name) return alert('Veuillez entrer votre nom ! / 請填寫姓名！');
+
+    const cleanPhone = phone.replace(/[\s\.\-\(\)]/g, '');
+    const frPhoneRegex = /^(?:(?:\+33|0033)[1-9]|0[1-9])\d{8}$/;
+    if (!frPhoneRegex.test(cleanPhone)) {
+      return alert('Veuillez entrer un numéro de téléphone français valide (ex: 0612345678) ! / 請填寫有效的法國手機號碼！');
+    }
+
+    if (!address) return alert('Veuillez entrer votre adresse de livraison ! / 請填寫送餐地址！');
+
+    const items = Object.keys(cart).map(id => {
+      const item = menuData.find(i => i.id === id);
+      return { 
+        id,
+        name_fr: item ? item.name_fr : 'Plat', 
+        name_zh: item ? item.name_zh : '菜品', 
+        qty: cart[id], 
+        price: item ? item.price : 0 
+      };
+    });
+    
+    const total = parseFloat(document.getElementById('total-price').innerText);
+    const orderId = 'CC-' + Date.now().toString().slice(-6);
+    const deliverySlot = `${dateSelect} - ${timeSelect}`;
+
+    const fullContactInfo = `[${deliverySlot}] ${phone} | Adresse: ${address}${note ? ' | Note: ' + note : ''}`;
+    const dbItems = items.map(i => ({ name: `${i.name_fr} (${i.name_zh})`, qty: i.qty, price: i.price }));
+
+    const { error } = await supabaseClient.from('orders').insert([
+      { customer_name: name, phone: fullContactInfo, items: dbItems, total_price: total, status: 'pending' }
+    ]);
+
+    if (error) {
+      console.error('Supabase Error:', error);
+      alert('Échec / 數據庫寫入錯誤: ' + error.message);
+      return;
+    }
+
+    // 自動扣減庫存
+    for (let cartItem of items) {
+      const targetDish = menuData.find(m => m.id === cartItem.id);
+      if (targetDish) {
+        const currentStock = (typeof targetDish.stock === 'number') ? targetDish.stock : 99;
+        const newStock = Math.max(0, currentStock - cartItem.qty);
+        const newAvailable = newStock > 0 ? (targetDish.is_available !== false) : false;
+
+        await supabaseClient
+          .from('menu_items')
+          .update({ stock: newStock, is_available: newAvailable })
+          .eq('id', cartItem.id);
+
+        targetDish.stock = newStock;
+        targetDish.is_available = newAvailable;
+      }
+    }
+
+    lastOrderDetails = { orderId, deliverySlot, name, phone, address, note, items, total };
+
+    cart = {};
+    closeCheckoutModal();
+    showReceiptModal(lastOrderDetails);
+
+  } catch (err) {
+    console.error('Submission Error:', err);
+    alert('Erreur / 提交過程發生錯誤: ' + err.message);
+  }
+}
+
+function showReceiptModal(order) {
+  document.getElementById('receipt-id').innerText = '#' + order.orderId;
+  document.getElementById('receipt-slot').innerText = order.deliverySlot;
+  document.getElementById('receipt-name').innerText = order.name;
+  document.getElementById('receipt-phone').innerText = order.phone;
+  document.getElementById('receipt-address').innerText = order.address;
+  document.getElementById('receipt-total').innerText = order.total.toFixed(2);
+
+  const itemsContainer = document.getElementById('receipt-items');
+  itemsContainer.innerHTML = order.items.map(i => `
+    <li class="flex justify-between">
+      <span>${i.name_fr} (${i.name_zh}) x${i.qty}</span>
+      <span class="font-bold">${(i.price * i.qty).toFixed(2)} €</span>
+    </li>
+  `).join('');
+
+  document.getElementById('receipt-modal').classList.remove('hidden');
+}
+
+function copyReceiptText() {
+  if (!lastOrderDetails) return;
+  const o = lastOrderDetails;
+  const itemText = o.items.map(i => `- ${i.name_fr} (${i.name_zh}) x${i.qty}`).join('\n');
+  const text = `🧾 【Cici Cuisine 訂單憑證 #${o.orderId}】\n📅 配送時間: ${o.deliverySlot}\n👤 姓名: ${o.name}\n📞 電話: ${o.phone}\n📍 地址: ${o.address}\n\n🍲 訂購餐點:\n${itemText}\n\n💰 總計: ${o.total.toFixed(2)} €`;
+
+  navigator.clipboard.writeText(text).then(() => {
+    alert('📋 訂單明細已複製到剪貼板！可以直接發給群主微信。');
+  }).catch(() => {
+    alert('複製失敗，請直接截圖保存。');
+  });
+}
+
+function closeReceiptModal() {
+  document.getElementById('receipt-modal').classList.add('hidden');
+  renderMenu();
+}
+
+// 8. 後台管理與暗號
+let secretClickCount = 0;
+let secretClickTimer = null;
+
+function handleSecretClick() {
+  secretClickCount++;
+  clearTimeout(secretClickTimer);
+  secretClickTimer = setTimeout(() => { secretClickCount = 0; }, 3000);
+
+  if (secretClickCount >= 5) {
+    secretClickCount = 0;
+    const btn = document.getElementById('admin-btn');
+    if (btn) btn.classList.remove('hidden');
+    toggleMode(true);
+  }
+}
+
+let isAdminLoggedIn = false;
+
+function toggleMode(forceCheck = false) {
+  const adminView = document.getElementById('admin-view');
+  const customerView = document.getElementById('customer-view');
+
+  if ((adminView.classList.contains('hidden') || forceCheck) && !isAdminLoggedIn) {
+    const password = prompt("🔐 Mot de passe Admin / 請輸入群主管理密碼：");
+    if (password !== "8888") {
+      return alert("❌ Mot de passe incorrect / 密碼錯誤！");
+    }
+    isAdminLoggedIn = true;
+  }
+
+  adminView.classList.toggle('hidden');
+  customerView.classList.toggle('hidden');
+
+  if (!adminView.classList.contains('hidden')) {
+    fetchOrders();
+  }
+}
+
+function checkUrlAdminParam() {
+  const urlParams = new URLSearchParams(window.location.search);
+  if (urlParams.get('admin') === 'true') {
+    const btn = document.getElementById('admin-btn');
+    if (btn) btn.classList.remove('hidden');
+  }
+}
+
+function switchAdminTab(tab) {
+  const ordersTab = document.getElementById('admin-orders-tab');
+  const menuTab = document.getElementById('admin-menu-tab');
+  const ordersBtn = document.getElementById('tab-orders-btn');
+  const menuBtn = document.getElementById('tab-menu-btn');
+
+  if (tab === 'orders') {
+    ordersTab.classList.remove('hidden');
+    menuTab.classList.add('hidden');
+    ordersBtn.className = "flex-1 py-2 rounded-lg bg-white shadow text-gray-800 transition";
+    menuBtn.className = "flex-1 py-2 rounded-lg text-gray-500 transition";
+    fetchOrders();
+  } else {
+    ordersTab.classList.add('hidden');
+    menuTab.classList.remove('hidden');
+    menuBtn.className = "flex-1 py-2 rounded-lg bg-white shadow text-gray-800 transition";
+    ordersBtn.className = "flex-1 py-2 rounded-lg text-gray-500 transition";
+    fetchAdminMenu();
+  }
+}
+
+// ----------------------------------------------------
+// 🌟 訂單管理邏輯：狀態切換、過濾、搜尋与司機小票
+// ----------------------------------------------------
+
+async function fetchOrders() {
+  const container = document.getElementById('order-list');
+  if (!container) return;
+
+  container.innerHTML = '<div class="text-gray-400 text-xs text-center py-4">Chargement des commandes... / 讀取訂單中...</div>';
+
+  try {
+    const { data, error } = await supabaseClient
+      .from('orders')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error('Fetch Orders Error:', error);
+      container.innerHTML = `<div class="text-red-500 text-xs text-center py-4">讀取失敗: ${error.message}</div>`;
+      return;
+    }
+
+    rawOrders = data || [];
+    applyOrderFilters();
+
+  } catch (err) {
+    console.error('Unexpected Error:', err);
+    container.innerHTML = `<div class="text-red-500 text-xs text-center py-4">系統異常: ${err.message}</div>`;
+  }
+}
+
+function filterOrderTab(tabKey) {
+  currentOrderTab = tabKey;
+
+  const btnAll = document.getElementById('order-filter-all');
+  const btnToday = document.getElementById('order-filter-today');
+  const btnTomorrow = document.getElementById('order-filter-tomorrow');
+  const datePicker = document.getElementById('order-date-picker');
+
+  if (datePicker) datePicker.value = '';
+
+  const activeClass = "flex-1 py-1.5 rounded-lg bg-white text-green-700 shadow-sm transition font-bold";
+  const inactiveClass = "flex-1 py-1.5 rounded-lg text-gray-500 transition font-normal";
+
+  if (btnAll) btnAll.className = tabKey === 'all' ? activeClass : inactiveClass;
+  if (btnToday) btnToday.className = tabKey === 'today' ? activeClass : inactiveClass;
+  if (btnTomorrow) btnTomorrow.className = tabKey === 'tomorrow' ? activeClass : inactiveClass;
+
+  applyOrderFilters();
+}
+
+// 快捷修改訂單狀態
+async function updateOrderStatus(orderId, newStatus) {
+  const { error } = await supabaseClient
+    .from('orders')
+    .update({ status: newStatus })
+    .eq('id', orderId);
+
+  if (error) {
+    alert('❌ 修改狀態失敗: ' + error.message);
+  } else {
+    const target = rawOrders.find(o => o.id === orderId);
+    if (target) target.status = newStatus;
+    applyOrderFilters();
+  }
+}
+
+// 綜合過濾與渲染
+function applyOrderFilters() {
+  const container = document.getElementById('order-list');
+  if (!container) return;
+
+  const searchKeyword = (document.getElementById('order-search-input')?.value || '').toLowerCase().trim();
+  const datePickerVal = document.getElementById('order-date-picker')?.value;
+  const statusFilterVal = document.getElementById('order-status-filter')?.value || 'all';
+
+  let filtered = [...rawOrders];
+
+  // 1. 狀態選單過濾 (pending, delivering, completed, cancelled)
+  if (statusFilterVal !== 'all') {
+    filtered = filtered.filter(o => (o.status || 'pending') === statusFilterVal);
+  }
+
+  // 2. 按時間 Tab / 日期選擇過濾
+  if (datePickerVal) {
+    filtered = filtered.filter(o => {
+      if (!o.created_at) return false;
+      const orderDateStr = new Date(o.created_at).toISOString().split('T')[0];
+      return orderDateStr === datePickerVal;
+    });
+  } else if (currentOrderTab === 'today') {
+    filtered = filtered.filter(o => {
+      const phoneStr = (o.phone || '').toLowerCase();
+      return phoneStr.includes('aujourd') || phoneStr.includes('當天') || phoneStr.includes('当天');
+    });
+  } else if (currentOrderTab === 'tomorrow') {
+    filtered = filtered.filter(o => {
+      const phoneStr = (o.phone || '').toLowerCase();
+      return phoneStr.includes('demain') || phoneStr.includes('明天');
+    });
+  }
+
+  // 3. 按關鍵字過濾
+  if (searchKeyword) {
+    filtered = filtered.filter(o => {
+      const nameMatch = (o.customer_name || '').toLowerCase().includes(searchKeyword);
+      const phoneMatch = (o.phone || '').toLowerCase().includes(searchKeyword);
+      const itemMatch = Array.isArray(o.items) && o.items.some(i => (i.name || '').toLowerCase().includes(searchKeyword));
+      return nameMatch || phoneMatch || itemMatch;
+    });
+  }
+
+  // 4. 計算有效金額（排除已取消的訂單）
+  const validOrders = filtered.filter(o => (o.status || 'pending') !== 'cancelled');
+  const totalMoney = validOrders.reduce((sum, o) => sum + (parseFloat(o.total_price) || 0), 0);
+  
+  const moneyElem = document.getElementById('stat-total-money');
+  const countElem = document.getElementById('stat-order-count');
+  if (moneyElem) moneyElem.innerText = totalMoney.toFixed(2);
+  if (countElem) countElem.innerText = filtered.length;
+
+  if (filtered.length === 0) {
+    container.innerHTML = '<div class="text-gray-400 text-xs text-center py-6">Aucune commande trouvée / 查無訂單</div>';
+    return;
+  }
+
+  // 5. 渲染列表
+  const statusBadgeMap = {
+    'pending': '<span class="bg-amber-100 text-amber-700 px-2 py-0.5 rounded text-[10px] font-bold">⏳ 待處理</span>',
+    'delivering': '<span class="bg-blue-100 text-blue-700 px-2 py-0.5 rounded text-[10px] font-bold">🛵 配送中</span>',
+    'completed': '<span class="bg-green-100 text-green-700 px-2 py-0.5 rounded text-[10px] font-bold">✅ 已送達</span>',
+    'cancelled': '<span class="bg-gray-200 text-gray-500 px-2 py-0.5 rounded text-[10px] font-bold line-through">❌ 已取消</span>'
+  };
+
+  container.innerHTML = filtered.map(o => {
+    const st = o.status || 'pending';
+    const isCancelled = st === 'cancelled';
+    const createdTimeStr = o.created_at ? new Date(o.created_at).toLocaleString() : '';
+    const itemsList = Array.isArray(o.items) 
+      ? o.items.map(i => `<li class="flex justify-between"><span>${i.name || '菜品'}</span><span class="font-bold">x${i.qty || 1}</span></li>`).join('')
+      : '<li class="text-gray-400">無明細</li>';
+
+    return `
+      <div class="bg-white p-3.5 rounded-xl border-l-4 ${st === 'completed' ? 'border-green-500' : (isCancelled ? 'border-gray-300 opacity-60' : 'border-orange-500')} shadow-sm space-y-2">
+        <div class="flex justify-between items-start font-bold text-gray-800">
+          <div>
+            <div class="flex items-center gap-2">
+              <span class="text-sm">👤 ${o.customer_name || '匿名顧客'}</span>
+              ${statusBadgeMap[st] || statusBadgeMap['pending']}
+            </div>
+            <div class="text-[10px] text-gray-400 font-normal mt-0.5">${createdTimeStr}</div>
+          </div>
+          <span class="text-green-600 text-base font-black ${isCancelled ? 'line-through text-gray-400' : ''}">${(o.total_price || 0).toFixed(2)} €</span>
+        </div>
+
+        <div class="text-xs font-medium text-orange-700 bg-orange-50 p-2 rounded-lg border border-orange-100 break-all leading-relaxed">
+          📍 ${o.phone || '無聯繫資訊'}
+        </div>
+
+        <ul class="text-xs bg-gray-50 p-2.5 rounded-lg border space-y-1 text-gray-700">
+          ${itemsList}
+        </ul>
+
+        <div class="flex justify-between items-center pt-2 border-t text-xs">
+          <!-- 快捷一鍵修改狀態下拉選單 -->
+          <div class="flex items-center gap-1">
+            <span class="text-[10px] text-gray-400 font-bold">狀態:</span>
+            <select onchange="updateOrderStatus('${o.id}', this.value)" class="text-[11px] border rounded p-1 font-bold bg-gray-50 text-gray-700">
+              <option value="pending" ${st === 'pending' ? 'selected' : ''}>⏳ 待處理</option>
+              <option value="delivering" ${st === 'delivering' ? 'selected' : ''}>🛵 配送中</option>
+              <option value="completed" ${st === 'completed' ? 'selected' : ''}>✅ 已送達</option>
+              <option value="cancelled" ${st === 'cancelled' ? 'selected' : ''}>❌ 已取消</option>
+            </select>
+          </div>
+
+          <button type="button" onclick="copyOrderForDriver('${o.customer_name}', '${o.phone}', '${o.total_price}')" class="bg-gray-100 hover:bg-gray-200 text-gray-700 text-[10px] px-2 py-1 rounded font-bold transition">
+            📋 派送小票
+          </button>
+        </div>
       </div>
-      
-      <div class="space-y-3">
-        <div>
-          <label class="block text-xs font-bold text-gray-600 mb-1">Jour de livraison / 配送日期 *</label>
-          <select id="cust-date" class="w-full border border-gray-300 p-2.5 rounded-lg text-sm bg-white focus:outline-none focus:border-green-500 font-bold text-gray-800">
-            <option value="">-- Choisir le jour / 請選擇日期 --</option>
-            <option value="Aujourd'hui (當天)">Aujourd'hui / 當天</option>
-            <option value="Demain (明天)">Demain / 明天</option>
-          </select>
-        </div>
+    `;
+  }).join('');
+}
 
-        <div>
-          <label class="block text-xs font-bold text-gray-600 mb-1">Créneau horaire / 配送時段 *</label>
-          <select id="cust-time" class="w-full border border-gray-300 p-2.5 rounded-lg text-sm bg-white focus:outline-none focus:border-green-500 font-bold text-gray-800">
-            <option value="">-- Choisir le créneau / 請選擇時段 --</option>
-            <option value="Midi (中午)">Midi / 中午</option>
-            <option value="Soir (晚上)">Soir / 晚上</option>
-          </select>
-        </div>
+function copyOrderForDriver(name, contactInfo, total) {
+  const text = `🛵 【外賣派送憑證】\n👤 客戶: ${name}\n📍 聯繫/地址: ${contactInfo}\n💰 應收金額: ${total} €`;
+  navigator.clipboard.writeText(text).then(() => {
+    alert('📋 已成功複製派送資訊！可以貼給司機或外賣員。');
+  }).catch(() => {
+    alert('複製失敗，請手動複製。');
+  });
+}
 
-        <div>
-          <label class="block text-xs font-bold text-gray-600 mb-1">Nom / 姓名或微信暱稱 *</label>
-          <input id="cust-name" type="text" placeholder="Ex: Jean (Paris)" class="w-full border border-gray-300 p-2.5 rounded-lg text-sm focus:outline-none focus:border-green-500">
+// 渲染後台菜單列表
+async function fetchAdminMenu() {
+  const container = document.getElementById('admin-menu-list');
+  if (!container) return;
+
+  if (!menuData || menuData.length === 0) {
+    const { data } = await supabaseClient.from('menu_items').select('*');
+    if (data) menuData = data;
+  }
+
+  if (!menuData || menuData.length === 0) {
+    container.innerHTML = '<div class="text-gray-400 text-xs text-center py-4">Aucun plat / 暫無菜品</div>';
+    return;
+  }
+
+  const categoryPriority = {
+    'Specialite': 1, 'Viandes': 2, 'Seafood': 3, 'Beef': 4, 'Legumes': 5, 'Staple': 6
+  };
+
+  const categoryLabelMap = {
+    'Specialite': '🌟 每日特色', 'Viandes': '🥩 葷菜', 'Seafood': '🐟 海鮮類',
+    'Beef': '🐂 牛肉類', 'Legumes': '🥬 素菜', 'Staple': '🍚 主食'
+  };
+
+  menuData.sort((a, b) => {
+    const catAKey = normalizeCategory(a.category, a.name_zh, a.name_fr);
+    const catBKey = normalizeCategory(b.category, b.name_zh, b.name_fr);
+
+    const priorityA = categoryPriority[catAKey] || 99;
+    const priorityB = categoryPriority[catBKey] || 99;
+
+    if (priorityA !== priorityB) {
+      return priorityA - priorityB;
+    }
+    return (a.sort_order || 99) - (b.sort_order || 99);
+  });
+
+  let lastCategoryKey = null;
+  let htmlContent = '';
+
+  menuData.forEach(item => {
+    const stockVal = (item && typeof item.stock === 'number') ? item.stock : 99;
+    const isAvailable = (item.is_available !== false) && (stockVal > 0);
+    const normKey = normalizeCategory(item.category, item.name_zh, item.name_fr);
+
+    if (normKey !== lastCategoryKey) {
+      lastCategoryKey = normKey;
+      htmlContent += `
+        <div class="pt-3 pb-1 text-xs font-bold text-gray-500 border-b border-gray-200 flex items-center justify-between">
+          <span>${categoryLabelMap[normKey] || '其他分類'}</span>
         </div>
-        <div>
-          <label class="block text-xs font-bold text-gray-600 mb-1">Téléphone (FR) / 法國聯繫電話 *</label>
-          <input id="cust-phone" type="tel" placeholder="Ex: 06 12 34 56 78" class="w-full border border-gray-300 p-2.5 rounded-lg text-sm focus:outline-none focus:border-green-500">
+      `;
+    }
+
+    const imgThumb = item.image_url 
+      ? `<img src="${item.image_url}" class="w-10 h-10 rounded object-cover mr-2 flex-shrink-0">`
+      : `<div class="w-10 h-10 rounded bg-gray-100 flex items-center justify-center text-xs text-gray-400 mr-2 flex-shrink-0">🍲</div>`;
+
+    htmlContent += `
+      <div class="bg-white p-2.5 rounded-xl border flex justify-between items-center shadow-sm hover:border-gray-300 transition">
+        <div class="flex items-center flex-1 pr-2 min-w-0">
+          ${imgThumb}
+          <div class="min-w-0 flex-1">
+            <div class="font-bold text-gray-800 text-xs truncate">
+              <span class="bg-gray-100 text-gray-600 px-1 py-0.5 rounded mr-1 font-mono">#${item.sort_order || 99}</span>
+              ${item.name_fr || ''} (${item.name_zh || ''})
+            </div>
+            <div class="text-green-600 font-extrabold text-xs mt-0.5 flex items-center gap-2">
+              <span>${item.price || 0} €</span>
+              <span class="text-gray-500 font-normal text-[10px] bg-gray-100 px-1 py-0.5 rounded">庫存: ${stockVal}</span>
+            </div>
+          </div>
         </div>
-        <div>
-          <label class="block text-xs font-bold text-gray-600 mb-1">Adresse de livraison / 送餐地址 *</label>
-          <input id="cust-address" type="text" placeholder="Ex: 12 Rue de Rivoli, Paris 75001" class="w-full border border-gray-300 p-2.5 rounded-lg text-sm focus:outline-none focus:border-green-500">
-        </div>
-        <div>
-          <label class="block text-xs font-bold text-gray-600 mb-1">Remarques / 備註 (選填)</label>
-          <input id="cust-note" type="text" placeholder="Ex: Less spicy / 微辣" class="w-full border border-gray-300 p-2.5 rounded-lg text-sm focus:outline-none focus:border-green-500">
+        <div class="flex items-center gap-1 flex-shrink-0">
+          <button type="button" onclick="toggleDishAvailability(event, '${item.id}', ${!isAvailable})" class="px-2 py-1 rounded text-[10px] font-bold transition ${isAvailable ? 'bg-green-100 text-green-700 hover:bg-green-200' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}">
+            ${isAvailable ? 'En vente' : 'Masqué'}
+          </button>
+          <button type="button" onclick="openDishModal('${item.id}')" class="bg-orange-100 text-orange-600 px-2 py-1 rounded text-[10px] font-bold hover:bg-orange-200">
+            Modifier
+          </button>
+          <button type="button" onclick="deleteDish(event, '${item.id}', '${item.name_zh}')" class="bg-red-100 text-red-600 px-2 py-1 rounded text-[10px] font-bold hover:bg-red-200">
+            Suppr.
+          </button>
         </div>
       </div>
+    `;
+  });
 
-      <div class="bg-gray-50 p-3 rounded-lg flex justify-between items-center text-sm font-bold border">
-        <span>Total：</span>
-        <span class="text-xl text-green-600"><span id="modal-total-price">0.00</span> €</span>
-      </div>
+  container.innerHTML = htmlContent;
+}
 
-      <button type="button" onclick="submitOrder()" class="w-full bg-green-500 text-white font-bold py-3 rounded-xl shadow-lg hover:bg-green-600 transition">
-        Confirmer / 提交訂單
-      </button>
-    </div>
-  </div>
+async function toggleDishAvailability(event, id, newStatus) {
+  if (event) event.stopPropagation();
+  
+  const { error } = await supabaseClient.from('menu_items').update({ is_available: newStatus }).eq('id', id);
+  if (error) {
+    alert('修改狀態失敗: ' + error.message);
+  } else {
+    const target = menuData.find(m => m.id === id);
+    if (target) target.is_available = newStatus;
 
-  <!-- 4. 電子小票彈窗（新增下載圖片功能） -->
-  <div id="receipt-modal" class="hidden fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
-    <div class="bg-white w-full max-w-md rounded-2xl p-6 space-y-4 shadow-2xl relative border-t-8 border-green-500 animate-slide-up max-h-[90vh] overflow-y-auto">
-      <div class="text-center">
-        <div class="w-12 h-12 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto text-2xl font-bold mb-2">✓</div>
-        <h3 class="text-xl font-extrabold text-gray-800">Commande Confirmée</h3>
-        <p class="text-xs text-gray-500 mt-1">訂單已成功提交！您可以儲存圖片或複製小票</p>
-      </div>
+    fetchAdminMenu();
+    renderMenu();
+  }
+}
 
-      <!-- 可直接導出為圖片的憑證卡片區塊 -->
-      <div id="receipt-card" class="bg-gray-50 border border-dashed border-gray-300 p-4 rounded-xl space-y-3 text-xs text-gray-700">
-        <div class="flex justify-between border-b pb-2">
-          <span class="font-bold text-gray-500">N° Commande (單號):</span>
-          <span id="receipt-id" class="font-mono font-bold text-gray-800">#CC-0001</span>
-        </div>
-        <div class="space-y-1">
-          <div class="text-orange-600 font-bold"><strong>Livraison / 配送時間:</strong> <span id="receipt-slot"></span></div>
-          <div><strong>Client / 姓名:</strong> <span id="receipt-name"></span></div>
-          <div><strong>Tél / 電話:</strong> <span id="receipt-phone"></span></div>
-          <div><strong>Adresse / 地址:</strong> <span id="receipt-address"></span></div>
-        </div>
+function openDishModal(id = null) {
+  const modal = document.getElementById('dish-modal');
+  const title = document.getElementById('dish-modal-title');
+  if (!modal) return;  
+  const sortInput = document.getElementById('dish-sort');
+  const stockInput = document.getElementById('dish-stock');
+  const urlInput = document.getElementById('dish-image-url');
+  const fileInput = document.getElementById('dish-img-file');
+  const preview = document.getElementById('dish-img-preview');
 
-        <div class="border-t pt-2 space-y-1">
-          <div class="font-bold text-gray-600 mb-1">Détail / 餐點明細:</div>
-          <ul id="receipt-items" class="space-y-1 pl-1"></ul>
-        </div>
+  if (fileInput) fileInput.value = '';
 
-        <div class="border-t pt-2 flex justify-between items-center font-bold text-sm text-gray-900">
-          <span>Total / 總計:</span>
-          <span class="text-base text-green-600"><span id="receipt-total">0.00</span> €</span>
-        </div>
-      </div>
+  if (id) {
+    const item = menuData.find(m => m.id === id);
+    if (!item) return;
+    title.innerText = 'Modifier le plat / 編輯菜品';
+    document.getElementById('dish-id').value = item.id;
+    document.getElementById('dish-name-fr').value = item.name_fr || '';
+    document.getElementById('dish-name-zh').value = item.name_zh || '';
+    document.getElementById('dish-price').value = item.price || '';
+    if (sortInput) sortInput.value = item.sort_order || 1;
+    if (stockInput) stockInput.value = (typeof item.stock === 'number') ? item.stock : 99;
+    if (urlInput) urlInput.value = item.image_url || '';
+    
+    if (preview) {
+      preview.innerHTML = item.image_url 
+        ? `<img src="${item.image_url}" class="w-full h-full object-cover">`
+        : '無圖片';
+    }
 
-      <!-- 操作按鈕欄 -->
-      <div class="space-y-2 pt-1">
-        <button type="button" onclick="downloadReceiptImage()" class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-2.5 rounded-xl text-xs flex items-center justify-center gap-1 shadow transition">
-          📸 儲存小票為圖片 (保存到相冊)
-        </button>
-        <button type="button" onclick="copyReceiptText()" class="w-full bg-orange-500 hover:bg-orange-600 text-white font-bold py-2.5 rounded-xl text-xs flex items-center justify-center gap-1 shadow transition">
-          📋 複製訂單明細 (發給微信群主)
-        </button>
-        <button type="button" onclick="closeReceiptModal()" class="w-full bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold py-2.5 rounded-xl text-xs transition">
-          Fermer / 完成
-        </button>
+    const normKey = normalizeCategory(item.category, item.name_zh, item.name_fr);
+    const catSelect = document.getElementById('dish-category');
+    if (catSelect) {
+      if (normKey === 'Specialite') catSelect.value = '每日特色';
+      else if (normKey === 'Seafood') catSelect.value = '海鮮類';
+      else if (normKey === 'Beef') catSelect.value = '牛肉類';
+      else if (normKey === 'Legumes') catSelect.value = '素菜';
+      else if (normKey === 'Staple') catSelect.value = '主食';
+      else catSelect.value = '葷菜';
+    }
+  } else {
+    title.innerText = 'Ajouter un plat / 新增菜品';
+    document.getElementById('dish-id').value = '';
+    document.getElementById('dish-name-fr').value = '';
+    document.getElementById('dish-name-zh').value = '';
+    document.getElementById('dish-price').value = '';
+    if (sortInput) sortInput.value = '1';
+    if (stockInput) stockInput.value = '99';
+    if (urlInput) urlInput.value = '';
+    if (preview) preview.innerHTML = '無圖片';
+    document.getElementById('dish-category').value = '每日特色';
+  }
+  modal.classList.remove('hidden');
+}
+
+function closeDishModal() {
+  const modal = document.getElementById('dish-modal');
+  if (modal) modal.classList.add('hidden');
+}
+
+async function saveDish() {
+  const id = document.getElementById('dish-id').value;
+  const name_fr = document.getElementById('dish-name-fr').value.trim();
+  const name_zh = document.getElementById('dish-name-zh').value.trim();
+  const price = parseFloat(document.getElementById('dish-price').value);
+  const sortInput = document.getElementById('dish-sort');
+  const stockInput = document.getElementById('dish-stock');
+  const fileInput = document.getElementById('dish-img-file');
+  let image_url = document.getElementById('dish-image-url').value.trim();
+
+  const sort_order = sortInput ? (parseInt(sortInput.value) || 1) : 1;
+  const stock = stockInput ? (parseInt(stockInput.value) >= 0 ? parseInt(stockInput.value) : 99) : 99;
+  const category = document.getElementById('dish-category').value;
+
+  if (!name_fr || !name_zh || isNaN(price)) {
+    return alert('Veuillez remplir tous les champs / 請完整填寫名稱與價格！');
+  }
+
+  if (fileInput && fileInput.files && fileInput.files[0]) {
+    const file = fileInput.files[0];
+    const fileExt = file.name.split('.').pop();
+    const fileName = `${Date.now()}_${Math.random().toString(36).substring(2, 7)}.${fileExt}`;
+
+    const { data: uploadData, error: uploadError } = await supabaseClient.storage
+      .from('dishes')
+      .upload(fileName, file);
+
+    if (uploadError) {
+      alert('❌ 圖片上傳失敗: ' + uploadError.message);
+      return;
+    }
+
+    const { data: publicUrlData } = supabaseClient.storage
+      .from('dishes')
+      .getPublicUrl(fileName);
+
+    if (publicUrlData) {
+      image_url = publicUrlData.publicUrl;
+    }
+  }
+
+  const payload = { 
+    name_fr, 
+    name_zh, 
+    price, 
+    sort_order,
+    stock,
+    category,
+    image_url,
+    is_available: stock > 0 
+  };
+
+  let res;
+  if (id) {
+    res = await supabaseClient.from('menu_items').update(payload).eq('id', id);
+  } else {
+    res = await supabaseClient.from('menu_items').insert([payload]);
+  }
+
+  if (res.error) {
+    alert('❌ 保存失敗: ' + res.error.message);
+  } else {
+    closeDishModal();
+    await fetchMenu();
+    fetchAdminMenu();
+  }
+}
+
+async function deleteDish(event, id, nameZh) {
+  if (event) event.stopPropagation();
+
+  const confirmDelete = confirm(`⚠️ Êtes-vous sûr de vouloir supprimer "${nameZh}" ?\n確定要永久刪除菜品「${nameZh}」嗎？刪除後無法恢復！`);
+  if (!confirmDelete) return;
+
+  const { error } = await supabaseClient.from('menu_items').delete().eq('id', id);
+
+  if (error) {
+    alert('❌ 刪除失敗: ' + error.message);
+  } else {
+    menuData = menuData.filter(m => m.id !== id);
+    alert('✅ 菜品已成功刪除！');
+    fetchAdminMenu();
+    renderMenu();
+  }
+}
+
+window.addEventListener('DOMContentLoaded', () => {
+  fetchMenu();
+  checkUrlAdminParam();
+});
