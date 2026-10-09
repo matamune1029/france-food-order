@@ -1,11 +1,20 @@
 const SUPABASE_URL = 'https://zcivplddxtaqlefrtajr.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_eQG7FVgOU36Z8edfnrf27w_5A7tlNiq';
-const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
+let supabaseClient = null;
 let cart = {};
 let menuData = [];
 let currentCategory = 'Specialite'; // 預設停留在“每日特色”
 let lastOrderDetails = null;
+
+// 安全初始化 Supabase
+function initSupabase() {
+  if (window.supabase && window.supabase.createClient) {
+    supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+    return true;
+  }
+  return false;
+}
 
 // 1. 標準分類標籤清單（6 個獨立大類）
 const fixedCategories = [
@@ -17,7 +26,7 @@ const fixedCategories = [
   { key: 'Staple', fr: 'Riz/Nouilles', zh: '主食' }
 ];
 
-// 2. 歸一化匹配邏輯（嚴密空值防護）
+// 2. 歸一化匹配邏輯
 function normalizeCategory(rawCat, nameZh = '', nameFr = '') {
   const cat = (rawCat || '').toString().toLowerCase().trim();
   const zh = (nameZh || '').toString().toLowerCase();
@@ -42,15 +51,23 @@ function normalizeCategory(rawCat, nameZh = '', nameFr = '') {
   return 'Viandes';
 }
 
-// 3. 載入所有菜單（帶錯誤防護）
+// 3. 載入所有菜單
 async function fetchMenu() {
   const container = document.getElementById('menu-container');
+
+  if (!initSupabase()) {
+    if (container) {
+      container.innerHTML = '<div class="text-center text-red-500 py-10 font-bold">Erreur SDK / Supabase 腳本下載失敗，請刷新頁面</div>';
+    }
+    return;
+  }
+
   try {
     const { data, error } = await supabaseClient.from('menu_items').select('*');
     
     if (error) {
       console.error('Menu Fetch Error:', error);
-      if (container) container.innerHTML = `<div class="text-center text-red-500 py-10 font-bold">Erreur / 菜單載入失敗: ${error.message}</div>`;
+      if (container) container.innerHTML = `<div class="text-center text-red-500 py-10 font-bold">Erreur DB / 數據庫讀取失敗: ${error.message}</div>`;
       return;
     }
 
@@ -59,7 +76,7 @@ async function fetchMenu() {
     renderMenu();
   } catch (err) {
     console.error('Fetch Menu Failure:', err);
-    if (container) container.innerHTML = `<div class="text-center text-red-500 py-10 font-bold">Erreur / 系統加載異常: ${err.message}</div>`;
+    if (container) container.innerHTML = `<div class="text-center text-red-500 py-10 font-bold">Erreur System / 系統異常: ${err.message}</div>`;
   }
 }
 
@@ -86,7 +103,7 @@ function switchCategory(catKey) {
   renderMenu();
 }
 
-// 5. 渲染前台菜單列表（防護空數據崩潰）
+// 5. 渲染前台菜單列表
 function renderMenu() {
   const container = document.getElementById('menu-container');
   if (!container) return;
@@ -95,7 +112,7 @@ function renderMenu() {
     return normalizeCategory(i.category, i.name_zh, i.name_fr) === currentCategory;
   });
 
-  // 排序：有庫存且上架在上（按 sort_order 升序），售罄(stock <= 0 或 is_available === false) 自動沉底
+  // 排序：有庫存且上架在上，售罄沉底
   listToDisplay.sort((a, b) => {
     const stockA = (a && typeof a.stock === 'number') ? a.stock : 99;
     const stockB = (b && typeof b.stock === 'number') ? b.stock : 99;
@@ -104,7 +121,7 @@ function renderMenu() {
     const availB = (b.is_available !== false && stockB > 0) ? 1 : 0;
 
     if (availA !== availB) {
-      return availB - availA; // 可售(1) 優先於 售罄(0)
+      return availB - availA;
     }
     return (a.sort_order || 99) - (b.sort_order || 99);
   });
@@ -118,22 +135,18 @@ function renderMenu() {
     const maxStock = (item && typeof item.stock === 'number') ? item.stock : 99;
     const currentCartQty = cart[item.id] || 0;
     
-    // 判斷是否可用
     const isAvailable = (item.is_available !== false) && (maxStock > 0);
-    // 是否已達庫存上限
     const isMaxReached = currentCartQty >= maxStock;
 
     return `
       <div class="bg-white p-3 rounded-xl shadow-sm flex justify-between items-center border border-gray-100 ${!isAvailable ? 'opacity-50 grayscale' : ''}">
         <div class="flex-1 pr-2">
           <div class="font-bold text-gray-800 text-sm leading-snug">
-            ${item.name_fr || ''}
-            ${!isAvailable ? '<span class="ml-2 text-[10px] bg-gray-200 text-gray-600 px-1.5 py-0.5 rounded font-normal">Épuisé / 已售罄</span>' : ''}
+            ${item.name_fr \vert{}\vert{} ''}${!isAvailable ? '<span class="ml-2 text-[10px] bg-gray-200 text-gray-600 px-1.5 py-0.5 rounded font-normal">Épuisé / 已售罄</span>' : ''}
           </div>
           <div class="text-xs text-gray-500 font-normal mt-1">${item.name_zh || ''}</div>
           <div class="flex items-center gap-2 mt-1.5">
-            <span class="text-green-600 font-extrabold text-base">${item.price || 0} €</span>
-            ${isAvailable && maxStock < 50 ? `<span class="text-[10px] text-orange-600 bg-orange-50 px-1.5 py-0.5 rounded border border-orange-100">Reste: ${maxStock}</span>` : ''}
+            <span class="text-green-600 font-extrabold text-base">${item.price \vert{}\vert{} 0} €</span>${isAvailable && maxStock < 50 ? `<span class="text-[10px] text-orange-600 bg-orange-50 px-1.5 py-0.5 rounded border border-orange-100">Reste: ${maxStock}</span>` : ''}
           </div>
         </div>
         <div class="flex items-center gap-2">
@@ -233,9 +246,9 @@ async function submitOrder() {
     
     const total = parseFloat(document.getElementById('total-price').innerText);
     const orderId = 'CC-' + Date.now().toString().slice(-6);
-    const deliverySlot = `${dateSelect} - ${timeSelect}`;
+    const deliverySlot = `${dateSelect} -${timeSelect}`;
 
-    const fullContactInfo = `[${deliverySlot}] ${phone} | Adresse: ${address}${note ? ' | Note: ' + note : ''}`;
+    const fullContactInfo = `[${deliverySlot}]${phone} | Adresse: ${address}${note ? ' | Note: ' + note : ''}`;
     const dbItems = items.map(i => ({ name: `${i.name_fr} (${i.name_zh})`, qty: i.qty, price: i.price }));
 
     const { error } = await supabaseClient.from('orders').insert([
@@ -475,48 +488,4 @@ async function fetchAdminMenu() {
     if (normKey !== lastCategoryKey) {
       lastCategoryKey = normKey;
       htmlContent += `
-        <div class="pt-3 pb-1 text-xs font-bold text-gray-500 border-b border-gray-200 flex items-center justify-between">
-          <span>${categoryLabelMap[normKey] || '其他分類'}</span>
-        </div>
-      `;
-    }
-
-    htmlContent += `
-      <div class="bg-white p-3 rounded-xl border flex justify-between items-center shadow-sm hover:border-gray-300 transition">
-        <div class="flex-1 pr-2">
-          <div class="font-bold text-gray-800 text-xs">
-            <span class="bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded mr-1 font-mono">#${item.sort_order || 99}</span>
-            ${item.name_fr || ''} (${item.name_zh || ''})
-          </div>
-          <div class="text-green-600 font-extrabold text-xs mt-1 flex items-center gap-2">
-            <span>${item.price || 0} €</span>
-            <span class="text-gray-500 font-normal text-[10px] bg-gray-100 px-1.5 py-0.5 rounded">庫存: ${stockVal}</span>
-          </div>
-        </div>
-        <div class="flex items-center gap-1.5">
-          <button type="button" onclick="toggleDishAvailability(event, '${item.id}', ${!isAvailable})" class="px-2 py-1 rounded text-[10px] font-bold transition ${isAvailable ? 'bg-green-100 text-green-700 hover:bg-green-200' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}">
-            ${isAvailable ? 'En vente / 上架中' : 'Masqué / 已下架'}
-          </button>
-          <button type="button" onclick="openDishModal('${item.id}')" class="bg-orange-100 text-orange-600 px-2 py-1 rounded text-[10px] font-bold hover:bg-orange-200">
-            Modifier / 編輯
-          </button>
-          <button type="button" onclick="deleteDish(event, '${item.id}', '${item.name_zh}')" class="bg-red-100 text-red-600 px-2 py-1 rounded text-[10px] font-bold hover:bg-red-200">
-            Supprimer / 刪除
-          </button>
-        </div>
-      </div>
-    `;
-  });
-
-  container.innerHTML = htmlContent;
-}
-
-async function toggleDishAvailability(event, id, newStatus) {
-  if (event) event.stopPropagation();
-  
-  const { error } = await supabaseClient.from('menu_items').update({ is_available: newStatus }).eq('id', id);
-  if (error) {
-    alert('修改狀態失敗: ' + error.message);
-  } else {
-    const target = menuData.find(m => m.id === id);
-    if (target) target.
+        <div class="pt-3 pb-1 text-xs font-bold text-gray-500 border-b
