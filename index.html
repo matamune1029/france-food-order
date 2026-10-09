@@ -180,7 +180,7 @@
       <!-- 1. 營業額與訂單數對帳卡片 -->
       <div class="grid grid-cols-2 gap-2 text-center">
         <div class="bg-gradient-to-br from-green-500 to-emerald-600 text-white p-2.5 rounded-xl shadow-sm">
-          <div class="text-[10px] opacity-80">Chiffre d'affaires / 篩選營收</div>
+          <div class="text-[10px] opacity-80">Chiffre d'affaires / 營收總計</div>
           <div class="text-lg font-black mt-0.5"><span id="stat-total-money">0.00</span> €</div>
         </div>
         <div class="bg-gradient-to-br from-orange-500 to-amber-600 text-white p-2.5 rounded-xl shadow-sm">
@@ -189,7 +189,7 @@
         </div>
       </div>
 
-      <!-- 2. 日期快捷切頁 (Tabs) -->
+      <!-- 2. 配送時間切頁 (全部 / 今天 / 明天) -->
       <div class="flex bg-gray-100 p-1 rounded-xl text-[11px] font-bold border border-gray-200">
         <button type="button" id="order-filter-all" onclick="filterOrderTab('all')" class="flex-1 py-1.5 rounded-lg bg-white text-green-700 shadow-sm transition">
           全部 (Toutes)
@@ -202,8 +202,15 @@
         </button>
       </div>
 
-      <!-- 3. 搜尋欄与日期選擇 -->
+      <!-- 3. 訂單狀態過濾選單 (新增: 待處理/配送中/已送達/已取消) -->
       <div class="flex gap-2">
+        <select id="order-status-filter" onchange="applyOrderFilters()" class="border p-2 rounded-xl text-xs bg-white font-bold text-gray-700">
+          <option value="all">所有狀態 / Tous les statuts</option>
+          <option value="pending">⏳ 待處理 (En attente)</option>
+          <option value="delivering">🛵 配送中 (En livraison)</option>
+          <option value="completed">✅ 已送達 (Libré)</option>
+          <option value="cancelled">❌ 已取消 (Annulé)</option>
+        </select>
         <input type="text" id="order-search-input" oninput="applyOrderFilters()" placeholder="🔍 搜尋姓名、電話、地址..." class="flex-1 border p-2 rounded-xl text-xs focus:outline-none focus:border-orange-500 bg-white">
         <input type="date" id="order-date-picker" onchange="applyOrderFilters()" class="border p-2 rounded-xl text-xs bg-white text-gray-600">
       </div>
