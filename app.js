@@ -7,32 +7,32 @@ let menuData = [];
 let currentCategory = 'ALL';
 let lastOrderDetails = null;
 
-// 標準分類清單（精準匹配 Supabase 資料庫中可能出現的各式中英文分類名稱）
+// 標準分類清單（改用核心關鍵字模糊匹配，杜絕斜槓/空格/中英文格式不符的問題）
 const fixedCategories = [
   { key: 'ALL', fr: 'Tout', zh: '全部' },
   { 
     key: 'Viandes', 
     fr: 'Viandes', 
     zh: '葷菜', 
-    match: ['Viandes', '葷菜', 'Viandes / 葷菜', 'Viandes/葷菜'] 
+    keywords: ['viande', '葷菜'] 
   },
   { 
     key: 'Poissons & Bœuf', 
     fr: 'Poissons/Bœuf', 
     zh: '魚/牛肉類', 
-    match: ['Poissons & Bœuf', 'Poissons/Bœuf', '魚/牛肉類', '魚牛肉類', 'Poissons & Bœuf / 魚牛肉類', 'Poissons/Bœuf/魚牛肉類'] 
+    keywords: ['poisson', 'bœuf', 'boeuf', '魚', '牛'] 
   },
   { 
     key: 'Légumes', 
     fr: 'Légumes', 
     zh: '素菜', 
-    match: ['Légumes', '素菜', 'Légumes / 素菜', 'Légumes/素菜'] 
+    keywords: ['légume', 'legume', '素菜'] 
   },
   { 
     key: 'Accompagnements', 
     fr: 'Riz/Nouilles', 
     zh: '主食', 
-    match: ['Accompagnements', '主食', 'Riz/Nouilles', 'Accompagnements / 主食', 'Riz / Nouilles'] 
+    keywords: ['accompagnement', 'riz', 'nouille', '主食'] 
   }
 ];
 
@@ -74,17 +74,36 @@ function switchCategory(catKey) {
   renderMenu();
 }
 
-// 3. 渲染前台菜單列表（完全修復魚/牛肉類過濾邏輯）
+// 判斷菜品屬於哪個標準大類的通用的輔助函數
+function matchCategoryKey(itemCategory) {
+  const catStr = (itemCategory || '').toLowerCase();
+  
+  // 優先匹配 魚/牛肉類
+  if (catStr.includes('魚') || catStr.includes('牛') || catStr.includes('poisson') || catStr.includes('bœuf') || catStr.includes('boeuf')) {
+    return 'Poissons & Bœuf';
+  }
+  // 素菜
+  if (catStr.includes('素') || catStr.includes('légume') || catStr.includes('legume')) {
+    return 'Légumes';
+  }
+  // 主食
+  if (catStr.includes('主食') || catStr.includes('riz') || catStr.includes('nouille') || catStr.includes('accompagnement')) {
+    return 'Accompagnements';
+  }
+  // 預設皆歸為 葷菜
+  return 'Viandes';
+}
+
+// 3. 渲染前台菜單列表（完全修復酸菜魚與魚/牛肉類顯示不出的 Bug）
 function renderMenu() {
   const container = document.getElementById('menu-container');
   if (!container) return;
 
-  // 定義 Tout 分類下的標準大類順序
   const categoryPriority = {
-    'Viandes': 1, '葷菜': 1, 'Viandes / 葷菜': 1,
-    'Poissons & Bœuf': 2, 'Poissons/Bœuf': 2, '魚/牛肉類': 2, '魚牛肉類': 2, 'Poissons & Bœuf / 魚牛肉類': 2,
-    'Légumes': 3, '素菜': 3, 'Légumes / 素菜': 3,
-    'Accompagnements': 4, '主食': 4, 'Riz/Nouilles': 4, 'Accompagnements / 主食': 4
+    'Viandes': 1,
+    'Poissons & Bœuf': 2,
+    'Légumes': 3,
+    'Accompagnements': 4
   };
 
   let listToDisplay = [];
@@ -93,26 +112,27 @@ function renderMenu() {
     // 【Tout 全部】分類：隱藏已下架菜品
     listToDisplay = menuData.filter(i => i.is_available !== false);
 
-    // 先按大類順序，再按 sort_order 升序
+    // 先按大類順序排序，同類內部按 sort_order 升序
     listToDisplay.sort((a, b) => {
-      const catA = categoryPriority[(a.category || '').trim()] || 99;
-      const catB = categoryPriority[(b.category || '').trim()] || 99;
-      if (catA !== catB) {
-        return catA - catB;
+      const catAKey = matchCategoryKey(a.category);
+      const catBKey = matchCategoryKey(b.category);
+      
+      const priorityA = categoryPriority[catAKey] || 99;
+      const priorityB = categoryPriority[catBKey] || 99;
+
+      if (priorityA !== priorityB) {
+        return priorityA - priorityB;
       }
       return (a.sort_order || 99) - (b.sort_order || 99);
     });
 
   } else {
-    // 【單一分類】：去除首尾空格精準匹配
-    const currentCatObj = fixedCategories.find(c => c.key === currentCategory);
-
+    // 【單一分類】：透過關鍵字比對過濾
     listToDisplay = menuData.filter(i => {
-      const itemCat = (i.category || '葷菜').trim();
-      return currentCatObj && currentCatObj.match && currentCatObj.match.includes(itemCat);
+      return matchCategoryKey(i.category) === currentCategory;
     });
 
-    // 上架在上，下架自動沉底；同狀態按 sort_order 升序
+    // 排序：上架在上，下架自動沉底；同狀態按 sort_order 升序
     listToDisplay.sort((a, b) => {
       const availA = a.is_available !== false ? 1 : 0;
       const availB = b.is_available !== false ? 1 : 0;
