@@ -101,10 +101,13 @@ function renderMenu() {
     return normalizeCategory(i.category, i.name_zh, i.name_fr) === currentCategory;
   });
 
-  // 排序：上架在上（按 sort_order 升序），下架的自动沉底
+  // 排序：有库存且上架在上（按 sort_order 升序），售罄(stock <= 0 或 is_available === false) 自动沉底
   listToDisplay.sort((a, b) => {
-    const availA = a.is_available !== false ? 1 : 0;
-    const availB = b.is_available !== false ? 1 : 0;
+    const stockA = (a && typeof a.stock === 'number') ? a.stock : 99;
+    const stockB = (b && typeof b.stock === 'number') ? b.stock : 99;
+
+    const availA = (a.is_available !== false && stockA > 0) ? 1 : 0;
+    const availB = (b.is_available !== false && stockB > 0) ? 1 : 0;
 
     if (availA !== availB) {
       return availB - availA;
@@ -118,7 +121,11 @@ function renderMenu() {
   }
 
   container.innerHTML = listToDisplay.map(item => {
-    const isAvailable = item.is_available !== false;
+    const maxStock = (item && typeof item.stock === 'number') ? item.stock : 99;
+    const currentCartQty = cart[item.id] || 0;
+
+    const isAvailable = (item.is_available !== false) && (maxStock > 0);
+    const isMaxReached = currentCartQty >= maxStock;
 
     return `
       <div class="bg-white p-3 rounded-xl shadow-sm flex justify-between items-center border border-gray-100 ${!isAvailable ? 'opacity-50 grayscale' : ''}">
@@ -128,16 +135,19 @@ function renderMenu() {
             ${!isAvailable ? '<span class="ml-2 text-[10px] bg-gray-200 text-gray-600 px-1.5 py-0.5 rounded font-normal">Épuisé / 已售罄</span>' : ''}
           </div>
           <div class="text-xs text-gray-500 font-normal mt-1">${item.name_zh || ''}</div>
-          <div class="text-green-600 font-extrabold text-base mt-1.5">${item.price} €</div>
+          <div class="flex items-center gap-2 mt-1.5">
+            <span class="text-green-600 font-extrabold text-base">${item.price || 0} €</span>
+            ${isAvailable && maxStock < 50 ? `<span class="text-[10px] text-orange-600 bg-orange-50 px-1.5 py-0.5 rounded border border-orange-100">Reste: ${maxStock}</span>` : ''}
+          </div>
         </div>
         <div class="flex items-center gap-2">
-          ${cart[item.id] ? `
+          ${currentCartQty > 0 ? `
             <button type="button" onclick="updateCart('${item.id}', -1)" class="w-7 h-7 bg-gray-100 text-gray-700 rounded-full font-bold flex items-center justify-center active:scale-90">-</button>
-            <span class="text-sm font-bold w-4 text-center">${cart[item.id]}</span>
+            <span class="text-sm font-bold w-4 text-center">${currentCartQty}</span>
           ` : ''}
           <button type="button" 
-            ${!isAvailable ? 'disabled' : `onclick="updateCart('${item.id}', 1)"`} 
-            class="w-7 h-7 ${isAvailable ? 'bg-green-500 text-white shadow-md active:scale-90' : 'bg-gray-300 text-gray-500 cursor-not-allowed'} rounded-full font-bold flex items-center justify-center">
+            ${(!isAvailable || isMaxReached) ? 'disabled' : `onclick="updateCart('${item.id}', 1)"`} 
+            class="w-7 h-7 ${isAvailable && !isMaxReached ? 'bg-green-500 text-white shadow-md active:scale-90' : 'bg-gray-300 text-gray-500 cursor-not-allowed'} rounded-full font-bold flex items-center justify-center">
             +
           </button>
         </div>
@@ -146,18 +156,27 @@ function renderMenu() {
   }).join('');
 }
 
-// 6. 更新购物车
+// 6. 更新购物车（受库存上限限购）
 function updateCart(id, delta) {
-  cart[id] = (cart[id] || 0) + delta;
+  const item = menuData.find(i => i.id === id);
+  const maxStock = (item && typeof item.stock === 'number') ? item.stock : 99;
+
+  const currentQty = cart[id] || 0;
+  if (delta > 0 && currentQty >= maxStock) {
+    alert(`Stock insuffisant ! Il ne reste que ${maxStock} portion(s). / 庫存不足，該菜品僅剩 ${maxStock} 份！`);
+    return;
+  }
+
+  cart[id] = currentQty + delta;
   if (cart[id] <= 0) delete cart[id];
   renderMenu();
 
   let total = 0;
   let count = 0;
   for (let itemId in cart) {
-    const item = menuData.find(i => i.id === itemId);
-    if (item) {
-      total += item.price * cart[itemId];
+    const menuItem = menuData.find(i => i.id === itemId);
+    if (menuItem) {
+      total += (menuItem.price || 0) * cart[itemId];
       count += cart[itemId];
     }
   }
@@ -208,6 +227,7 @@ async function submitOrder() {
     const items = Object.keys(cart).map(id => {
       const item = menuData.find(i => i.id === id);
       return { 
+        id,
         name_fr: item ? item.name_fr : 'Plat', 
         name_zh: item ? item.name_zh : '菜品', 
         qty: cart[id], 
@@ -230,6 +250,24 @@ async function submitOrder() {
       console.error('Supabase Error:', error);
       alert('Échec / 數據庫寫入錯誤: ' + error.message);
       return;
+    }
+
+    // 自动扣减 Supabase 菜品库存 stock
+    for (let cartItem of items) {
+      const targetDish = menuData.find(m => m.id === cartItem.id);
+      if (targetDish) {
+        const currentStock = (typeof targetDish.stock === 'number') ? targetDish.stock : 99;
+        const newStock = Math.max(0, currentStock - cartItem.qty);
+        const newAvailable = newStock > 0 ? (targetDish.is_available !== false) : false;
+
+        await supabaseClient
+          .from('menu_items')
+          .update({ stock: newStock, is_available: newAvailable })
+          .eq('id', cartItem.id);
+
+        targetDish.stock = newStock;
+        targetDish.is_available = newAvailable;
+      }
     }
 
     lastOrderDetails = { orderId, deliverySlot, name, phone, address, note, items, total };
@@ -354,7 +392,7 @@ async function fetchOrders() {
   
   if (error) {
     console.error('读取订单失败 Error:', error);
-    alert('读取订单失败: ' + error.message); // 如果是 RLS 权限问题，这里会直接弹窗报错提示
+    alert('读取订单失败: ' + error.message);
     return;
   }
 
@@ -398,27 +436,15 @@ async function fetchAdminMenu() {
     return;
   }
 
-  // 定义后台大类排序权重
   const categoryPriority = {
-    'Specialite': 1,
-    'Viandes': 2,
-    'Seafood': 3,
-    'Beef': 4,
-    'Legumes': 5,
-    'Staple': 6
+    'Specialite': 1, 'Viandes': 2, 'Seafood': 3, 'Beef': 4, 'Legumes': 5, 'Staple': 6
   };
 
-  // 分类名称对照表（用于后台显示的分类标签）
   const categoryLabelMap = {
-    'Specialite': '🌟 每日特色',
-    'Viandes': '🥩 荤菜',
-    'Seafood': '🐟 海鲜类',
-    'Beef': '🐂 牛肉类',
-    'Legumes': '🥬 素菜',
-    'Staple': '🍚 主食'
+    'Specialite': '🌟 每日特色', 'Viandes': '🥩 荤菜', 'Seafood': '🐟 海鲜类',
+    'Beef': '🐂 牛肉类', 'Legumes': '🥬 素菜', 'Staple': '🍚 主食'
   };
 
-  // 1. 先按“大类顺序”排，2. 同大类内部按“sort_order”升序排
   menuData.sort((a, b) => {
     const catAKey = normalizeCategory(a.category, a.name_zh, a.name_fr);
     const catBKey = normalizeCategory(b.category, b.name_zh, b.name_fr);
@@ -427,20 +453,19 @@ async function fetchAdminMenu() {
     const priorityB = categoryPriority[catBKey] || 99;
 
     if (priorityA !== priorityB) {
-      return priorityA - priorityB; // 大类排序
+      return priorityA - priorityB;
     }
-    return (a.sort_order || 99) - (b.sort_order || 99); // 同大类内部按排序号升序
+    return (a.sort_order || 99) - (b.sort_order || 99);
   });
 
-  // 渲染列表并展示大类分割标签
   let lastCategoryKey = null;
   let htmlContent = '';
 
   menuData.forEach(item => {
-    const isAvailable = item.is_available !== false;
+    const stockVal = (item && typeof item.stock === 'number') ? item.stock : 99;
+    const isAvailable = (item.is_available !== false) && (stockVal > 0);
     const normKey = normalizeCategory(item.category, item.name_zh, item.name_fr);
 
-    // 当切换到下一个大类时，插入一个大类标题分割线
     if (normKey !== lastCategoryKey) {
       lastCategoryKey = normKey;
       htmlContent += `
@@ -457,9 +482,9 @@ async function fetchAdminMenu() {
             <span class="bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded mr-1 font-mono">#${item.sort_order || 99}</span>
             ${item.name_fr || ''} (${item.name_zh || ''})
           </div>
-          <div class="text-green-600 font-extrabold text-xs mt-1">
-            ${item.price} € 
-            <span class="text-gray-400 font-normal text-[10px] ml-1">| ${item.category || '未归类'}</span>
+          <div class="text-green-600 font-extrabold text-xs mt-1 flex items-center gap-2">
+            <span>${item.price || 0} €</span>
+            <span class="text-gray-500 font-normal text-[10px] bg-gray-100 px-1.5 py-0.5 rounded">库存: ${stockVal}</span>
           </div>
         </div>
         <div class="flex items-center gap-1.5">
@@ -479,6 +504,7 @@ async function fetchAdminMenu() {
 
   container.innerHTML = htmlContent;
 }
+
 async function toggleDishAvailability(event, id, newStatus) {
   if (event) event.stopPropagation();
   
@@ -499,6 +525,7 @@ function openDishModal(id = null) {
   const title = document.getElementById('dish-modal-title');
   if (!modal) return;  
   const sortInput = document.getElementById('dish-sort');
+  const stockInput = document.getElementById('dish-stock');
 
   if (id) {
     const item = menuData.find(m => m.id === id);
@@ -509,8 +536,8 @@ function openDishModal(id = null) {
     document.getElementById('dish-name-zh').value = item.name_zh || '';
     document.getElementById('dish-price').value = item.price || '';
     if (sortInput) sortInput.value = item.sort_order || 1;
+    if (stockInput) stockInput.value = (typeof item.stock === 'number') ? item.stock : 99;
     
-    // 下拉菜单匹配
     const normKey = normalizeCategory(item.category, item.name_zh, item.name_fr);
     const catSelect = document.getElementById('dish-category');
     if (catSelect) {
@@ -528,6 +555,7 @@ function openDishModal(id = null) {
     document.getElementById('dish-name-zh').value = '';
     document.getElementById('dish-price').value = '';
     if (sortInput) sortInput.value = '1';
+    if (stockInput) stockInput.value = '99';
     document.getElementById('dish-category').value = '每日特色';
   }
   modal.classList.remove('hidden');
@@ -544,7 +572,10 @@ async function saveDish() {
   const name_zh = document.getElementById('dish-name-zh').value.trim();
   const price = parseFloat(document.getElementById('dish-price').value);
   const sortInput = document.getElementById('dish-sort');
+  const stockInput = document.getElementById('dish-stock');
+
   const sort_order = sortInput ? (parseInt(sortInput.value) || 1) : 1;
+  const stock = stockInput ? (parseInt(stockInput.value) >= 0 ? parseInt(stockInput.value) : 99) : 99;
   const category = document.getElementById('dish-category').value;
 
   if (!name_fr || !name_zh || isNaN(price)) {
@@ -556,8 +587,9 @@ async function saveDish() {
     name_zh, 
     price, 
     sort_order,
+    stock,
     category, 
-    is_available: true 
+    is_available: stock > 0 
   };
 
   let res;
