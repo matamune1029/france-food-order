@@ -4,9 +4,9 @@ const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 let cart = {};
 let menuData = [];
-let rawOrders = []; // 快取原始訂單數據
+let rawOrders = []; // 暫存原始訂單數據
 let currentCategory = 'Specialite';
-let currentOrderTab = 'all'; // 訂單篩選標籤: 'all', 'today', 'tomorrow'
+let currentOrderTab = 'all'; // 訂單時間標籤: 'all', 'today', 'tomorrow'
 let lastOrderDetails = null;
 
 // 1. 標準分類標籤清單
@@ -237,7 +237,7 @@ async function submitOrder() {
     const dbItems = items.map(i => ({ name: `${i.name_fr} (${i.name_zh})`, qty: i.qty, price: i.price }));
 
     const { error } = await supabaseClient.from('orders').insert([
-      { customer_name: name, phone: fullContactInfo, items: dbItems, total_price: total }
+      { customer_name: name, phone: fullContactInfo, items: dbItems, total_price: total, status: 'pending' }
     ]);
 
     if (error) {
@@ -382,7 +382,7 @@ function switchAdminTab(tab) {
 }
 
 // ----------------------------------------------------
-// 🌟 高階訂單管理邏輯：搜尋、日期切頁、對帳與複製小票
+// 🌟 訂單管理邏輯：狀態切換、過濾、搜尋与司機小票
 // ----------------------------------------------------
 
 async function fetchOrders() {
@@ -412,7 +412,6 @@ async function fetchOrders() {
   }
 }
 
-// 切換訂單日期快捷 Tab (全部 / 今天 / 明天)
 function filterOrderTab(tabKey) {
   currentOrderTab = tabKey;
 
@@ -421,7 +420,6 @@ function filterOrderTab(tabKey) {
   const btnTomorrow = document.getElementById('order-filter-tomorrow');
   const datePicker = document.getElementById('order-date-picker');
 
-  // 清空自訂 Date Picker
   if (datePicker) datePicker.value = '';
 
   const activeClass = "flex-1 py-1.5 rounded-lg bg-white text-green-700 shadow-sm transition font-bold";
@@ -434,19 +432,40 @@ function filterOrderTab(tabKey) {
   applyOrderFilters();
 }
 
-// 執行搜尋與綜合過濾
+// 快捷修改訂單狀態
+async function updateOrderStatus(orderId, newStatus) {
+  const { error } = await supabaseClient
+    .from('orders')
+    .update({ status: newStatus })
+    .eq('id', orderId);
+
+  if (error) {
+    alert('❌ 修改狀態失敗: ' + error.message);
+  } else {
+    const target = rawOrders.find(o => o.id === orderId);
+    if (target) target.status = newStatus;
+    applyOrderFilters();
+  }
+}
+
+// 綜合過濾與渲染
 function applyOrderFilters() {
   const container = document.getElementById('order-list');
   if (!container) return;
 
   const searchKeyword = (document.getElementById('order-search-input')?.value || '').toLowerCase().trim();
   const datePickerVal = document.getElementById('order-date-picker')?.value;
+  const statusFilterVal = document.getElementById('order-status-filter')?.value || 'all';
 
   let filtered = [...rawOrders];
 
-  // 1. 按快捷 Tab 或 Date Picker 篩選
+  // 1. 狀態選單過濾 (pending, delivering, completed, cancelled)
+  if (statusFilterVal !== 'all') {
+    filtered = filtered.filter(o => (o.status || 'pending') === statusFilterVal);
+  }
+
+  // 2. 按時間 Tab / 日期選擇過濾
   if (datePickerVal) {
-    // 使用者手動選了特定日期 (如 2026-03-20)
     filtered = filtered.filter(o => {
       if (!o.created_at) return false;
       const orderDateStr = new Date(o.created_at).toISOString().split('T')[0];
@@ -464,7 +483,7 @@ function applyOrderFilters() {
     });
   }
 
-  // 2. 按搜尋關鍵字過濾 (姓名 / 電話 / 地址 / 餐點)
+  // 3. 按關鍵字過濾
   if (searchKeyword) {
     filtered = filtered.filter(o => {
       const nameMatch = (o.customer_name || '').toLowerCase().includes(searchKeyword);
@@ -474,33 +493,47 @@ function applyOrderFilters() {
     });
   }
 
-  // 3. 更新對帳與統計數字
-  const totalMoney = filtered.reduce((sum, o) => sum + (parseFloat(o.total_price) || 0), 0);
+  // 4. 計算有效金額（排除已取消的訂單）
+  const validOrders = filtered.filter(o => (o.status || 'pending') !== 'cancelled');
+  const totalMoney = validOrders.reduce((sum, o) => sum + (parseFloat(o.total_price) || 0), 0);
+  
   const moneyElem = document.getElementById('stat-total-money');
   const countElem = document.getElementById('stat-order-count');
   if (moneyElem) moneyElem.innerText = totalMoney.toFixed(2);
   if (countElem) countElem.innerText = filtered.length;
 
-  // 4. 渲染訂單列表
   if (filtered.length === 0) {
-    container.innerHTML = '<div class="text-gray-400 text-xs text-center py-6">Aucune commande trouvée / 查無符合條件的訂單</div>';
+    container.innerHTML = '<div class="text-gray-400 text-xs text-center py-6">Aucune commande trouvée / 查無訂單</div>';
     return;
   }
 
+  // 5. 渲染列表
+  const statusBadgeMap = {
+    'pending': '<span class="bg-amber-100 text-amber-700 px-2 py-0.5 rounded text-[10px] font-bold">⏳ 待處理</span>',
+    'delivering': '<span class="bg-blue-100 text-blue-700 px-2 py-0.5 rounded text-[10px] font-bold">🛵 配送中</span>',
+    'completed': '<span class="bg-green-100 text-green-700 px-2 py-0.5 rounded text-[10px] font-bold">✅ 已送達</span>',
+    'cancelled': '<span class="bg-gray-200 text-gray-500 px-2 py-0.5 rounded text-[10px] font-bold line-through">❌ 已取消</span>'
+  };
+
   container.innerHTML = filtered.map(o => {
+    const st = o.status || 'pending';
+    const isCancelled = st === 'cancelled';
     const createdTimeStr = o.created_at ? new Date(o.created_at).toLocaleString() : '';
     const itemsList = Array.isArray(o.items) 
       ? o.items.map(i => `<li class="flex justify-between"><span>${i.name || '菜品'}</span><span class="font-bold">x${i.qty || 1}</span></li>`).join('')
       : '<li class="text-gray-400">無明細</li>';
 
     return `
-      <div class="bg-white p-3.5 rounded-xl border-l-4 border-orange-500 shadow-sm space-y-2 relative">
+      <div class="bg-white p-3.5 rounded-xl border-l-4 ${st === 'completed' ? 'border-green-500' : (isCancelled ? 'border-gray-300 opacity-60' : 'border-orange-500')} shadow-sm space-y-2">
         <div class="flex justify-between items-start font-bold text-gray-800">
           <div>
-            <span class="text-sm">👤 ${o.customer_name || '匿名顧客'}</span>
+            <div class="flex items-center gap-2">
+              <span class="text-sm">👤 ${o.customer_name || '匿名顧客'}</span>
+              ${statusBadgeMap[st] || statusBadgeMap['pending']}
+            </div>
             <div class="text-[10px] text-gray-400 font-normal mt-0.5">${createdTimeStr}</div>
           </div>
-          <span class="text-green-600 text-base font-black">${(o.total_price || 0).toFixed(2)} €</span>
+          <span class="text-green-600 text-base font-black ${isCancelled ? 'line-through text-gray-400' : ''}">${(o.total_price || 0).toFixed(2)} €</span>
         </div>
 
         <div class="text-xs font-medium text-orange-700 bg-orange-50 p-2 rounded-lg border border-orange-100 break-all leading-relaxed">
@@ -511,9 +544,20 @@ function applyOrderFilters() {
           ${itemsList}
         </ul>
 
-        <div class="flex justify-end gap-2 pt-1 border-t">
-          <button type="button" onclick="copyOrderForDriver('${o.customer_name}', '${o.phone}', '${o.total_price}')" class="bg-gray-100 hover:bg-gray-200 text-gray-700 text-[10px] px-2.5 py-1 rounded-md font-bold transition">
-            📋 複製派送資訊
+        <div class="flex justify-between items-center pt-2 border-t text-xs">
+          <!-- 快捷一鍵修改狀態下拉選單 -->
+          <div class="flex items-center gap-1">
+            <span class="text-[10px] text-gray-400 font-bold">狀態:</span>
+            <select onchange="updateOrderStatus('${o.id}', this.value)" class="text-[11px] border rounded p-1 font-bold bg-gray-50 text-gray-700">
+              <option value="pending" ${st === 'pending' ? 'selected' : ''}>⏳ 待處理</option>
+              <option value="delivering" ${st === 'delivering' ? 'selected' : ''}>🛵 配送中</option>
+              <option value="completed" ${st === 'completed' ? 'selected' : ''}>✅ 已送達</option>
+              <option value="cancelled" ${st === 'cancelled' ? 'selected' : ''}>❌ 已取消</option>
+            </select>
+          </div>
+
+          <button type="button" onclick="copyOrderForDriver('${o.customer_name}', '${o.phone}', '${o.total_price}')" class="bg-gray-100 hover:bg-gray-200 text-gray-700 text-[10px] px-2 py-1 rounded font-bold transition">
+            📋 派送小票
           </button>
         </div>
       </div>
@@ -521,7 +565,6 @@ function applyOrderFilters() {
   }).join('');
 }
 
-// 複製給司機/外賣員的便條
 function copyOrderForDriver(name, contactInfo, total) {
   const text = `🛵 【外賣派送憑證】\n👤 客戶: ${name}\n📍 聯繫/地址: ${contactInfo}\n💰 應收金額: ${total} €`;
   navigator.clipboard.writeText(text).then(() => {
