@@ -6,6 +6,8 @@
   <title>Cici Cuisine - Commande en ligne</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <!-- 引入 html2canvas 插件（用于把小票网页转成图片下载） -->
+  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
 </head>
 <body class="bg-gray-100 flex flex-col h-screen overflow-hidden font-sans">
 
@@ -19,9 +21,15 @@
           <p class="text-[11px] opacity-80 font-medium">🕒 12:00 - 14:00 (Lundi - Samedi)</p>
         </div>
       </div>
-      <button id="admin-btn" onclick="toggleMode()" class="hidden bg-white/20 hover:bg-white/30 text-white text-xs px-2.5 py-1 rounded-full border border-white/40 transition">
-        Admin / 後台
-      </button>
+      <div class="flex items-center gap-2">
+        <!-- 顧客「我的歷史訂單」按鈕 -->
+        <button type="button" onclick="openMyOrdersModal()" class="bg-white/20 hover:bg-white/30 text-white text-xs px-2.5 py-1.5 rounded-full border border-white/40 flex items-center gap-1 active:scale-95 transition">
+          📋 Mes Commandes / 我的訂單
+        </button>
+        <button id="admin-btn" onclick="toggleMode()" class="hidden bg-white/20 hover:bg-white/30 text-white text-xs px-2.5 py-1.5 rounded-full border border-white/40 transition">
+          Admin / 後台
+        </button>
+      </div>
     </div>
   </header>
 
@@ -113,16 +121,17 @@
     </div>
   </div>
 
-  <!-- 4. 電子小票彈窗 -->
+  <!-- 4. 電子小票彈窗（新增下載圖片功能） -->
   <div id="receipt-modal" class="hidden fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
     <div class="bg-white w-full max-w-md rounded-2xl p-6 space-y-4 shadow-2xl relative border-t-8 border-green-500 animate-slide-up max-h-[90vh] overflow-y-auto">
       <div class="text-center">
         <div class="w-12 h-12 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto text-2xl font-bold mb-2">✓</div>
         <h3 class="text-xl font-extrabold text-gray-800">Commande Confirmée</h3>
-        <p class="text-xs text-gray-500 mt-1">訂單已成功提交！請截圖或複製發給群主</p>
+        <p class="text-xs text-gray-500 mt-1">訂單已成功提交！您可以儲存圖片或複製小票</p>
       </div>
 
-      <div class="bg-gray-50 border border-dashed border-gray-300 p-4 rounded-xl space-y-3 text-xs text-gray-700">
+      <!-- 可直接導出為圖片的憑證卡片區塊 -->
+      <div id="receipt-card" class="bg-gray-50 border border-dashed border-gray-300 p-4 rounded-xl space-y-3 text-xs text-gray-700">
         <div class="flex justify-between border-b pb-2">
           <span class="font-bold text-gray-500">N° Commande (單號):</span>
           <span id="receipt-id" class="font-mono font-bold text-gray-800">#CC-0001</span>
@@ -145,161 +154,14 @@
         </div>
       </div>
 
+      <!-- 操作按鈕欄 -->
       <div class="space-y-2 pt-1">
+        <button type="button" onclick="downloadReceiptImage()" class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-2.5 rounded-xl text-xs flex items-center justify-center gap-1 shadow transition">
+          📸 儲存小票為圖片 (保存到相冊)
+        </button>
         <button type="button" onclick="copyReceiptText()" class="w-full bg-orange-500 hover:bg-orange-600 text-white font-bold py-2.5 rounded-xl text-xs flex items-center justify-center gap-1 shadow transition">
-          📋 複製訂單明細 (可直接貼給群主微信)
+          📋 複製訂單明細 (發給微信群主)
         </button>
         <button type="button" onclick="closeReceiptModal()" class="w-full bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold py-2.5 rounded-xl text-xs transition">
           Fermer / 完成
         </button>
-      </div>
-    </div>
-  </div>
-
-  <!-- 5. 群主後台視圖 (Admin View) -->
-  <div id="admin-view" class="hidden p-4 space-y-4 max-w-xl mx-auto pb-20 overflow-y-auto h-full">
-    <div class="flex justify-between items-center bg-white p-3 rounded-xl shadow-sm border">
-      <h2 class="font-bold text-gray-800 text-base">🚨 Commandes & Menu / 群主後台</h2>
-      <button type="button" onclick="toggleMode()" class="bg-gray-100 text-gray-600 text-xs px-3 py-1.5 rounded-lg font-bold">
-        Retour / 返回前台
-      </button>
-    </div>
-
-    <!-- 後台 功能切換 Tab -->
-    <div class="flex bg-gray-200 p-1 rounded-xl text-xs font-bold">
-      <button id="tab-orders-btn" type="button" onclick="switchAdminTab('orders')" class="flex-1 py-2 rounded-lg bg-white shadow text-gray-800 transition">
-        📦 訂單管理
-      </button>
-      <button id="tab-menu-btn" type="button" onclick="switchAdminTab('menu')" class="flex-1 py-2 rounded-lg text-gray-500 transition">
-        🍲 菜品管理
-      </button>
-    </div>
-
-    <!-- TAB 1: 訂單管理 -->
-    <div id="admin-orders-tab" class="space-y-3">
-      <!-- 1. 營業額與訂單數對帳卡片 -->
-      <div class="grid grid-cols-2 gap-2 text-center">
-        <div class="bg-gradient-to-br from-green-500 to-emerald-600 text-white p-2.5 rounded-xl shadow-sm">
-          <div class="text-[10px] opacity-80">Chiffre d'affaires / 營收總計</div>
-          <div class="text-lg font-black mt-0.5"><span id="stat-total-money">0.00</span> €</div>
-        </div>
-        <div class="bg-gradient-to-br from-orange-500 to-amber-600 text-white p-2.5 rounded-xl shadow-sm">
-          <div class="text-[10px] opacity-80">Total Commandes / 訂單筆數</div>
-          <div class="text-lg font-black mt-0.5"><span id="stat-order-count">0</span> 筆</div>
-        </div>
-      </div>
-
-      <!-- 2. 配送時間切頁 (全部 / 今天 / 明天) -->
-      <div class="flex bg-gray-100 p-1 rounded-xl text-[11px] font-bold border border-gray-200">
-        <button type="button" id="order-filter-all" onclick="filterOrderTab('all')" class="flex-1 py-1.5 rounded-lg bg-white text-green-700 shadow-sm transition">
-          全部 (Toutes)
-        </button>
-        <button type="button" id="order-filter-today" onclick="filterOrderTab('today')" class="flex-1 py-1.5 rounded-lg text-gray-500 transition">
-          今天 (Aujourd'hui)
-        </button>
-        <button type="button" id="order-filter-tomorrow" onclick="filterOrderTab('tomorrow')" class="flex-1 py-1.5 rounded-lg text-gray-500 transition">
-          明天 (Demain)
-        </button>
-      </div>
-
-      <!-- 3. 訂單狀態過濾選單 (新增: 待處理/配送中/已送達/已取消) -->
-      <div class="flex gap-2">
-        <select id="order-status-filter" onchange="applyOrderFilters()" class="border p-2 rounded-xl text-xs bg-white font-bold text-gray-700">
-          <option value="all">所有狀態 / Tous les statuts</option>
-          <option value="pending">⏳ 待處理 (En attente)</option>
-          <option value="delivering">🛵 配送中 (En livraison)</option>
-          <option value="completed">✅ 已送達 (Libré)</option>
-          <option value="cancelled">❌ 已取消 (Annulé)</option>
-        </select>
-        <input type="text" id="order-search-input" oninput="applyOrderFilters()" placeholder="🔍 搜尋姓名、電話、地址..." class="flex-1 border p-2 rounded-xl text-xs focus:outline-none focus:border-orange-500 bg-white">
-        <input type="date" id="order-date-picker" onchange="applyOrderFilters()" class="border p-2 rounded-xl text-xs bg-white text-gray-600">
-      </div>
-
-      <!-- 4. 訂單列表 -->
-      <div id="order-list" class="space-y-3">
-        <div class="text-gray-400 text-xs text-center py-4">Chargement / 加載中...</div>
-      </div>
-    </div>
-
-    <!-- TAB 2: 菜品管理 -->
-    <div id="admin-menu-tab" class="hidden space-y-3">
-      <button type="button" onclick="openDishModal()" class="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-2.5 rounded-xl text-xs shadow transition">
-        ➕ Add New Dish / 新增菜品
-      </button>
-      <div id="admin-menu-list" class="space-y-2">
-        <!-- 菜品管理列表動態渲染 -->
-      </div>
-    </div>
-  </div>
-
-  <!-- 6. 新增/編輯菜品彈窗 Modal -->
-  <div id="dish-modal" class="hidden fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
-    <div class="bg-white w-full max-w-md rounded-2xl p-5 space-y-3 shadow-2xl max-h-[90vh] overflow-y-auto">
-      <div class="flex justify-between items-center border-b pb-2">
-        <h3 id="dish-modal-title" class="font-bold text-sm text-gray-800">Ajouter un plat / 新增菜品</h3>
-        <button type="button" onclick="closeDishModal()" class="text-gray-400 font-bold">✕</button>
-      </div>
-      <input type="hidden" id="dish-id">
-      
-      <!-- 圖片上傳與預覽 -->
-      <div>
-        <label class="block text-xs font-bold text-gray-600 mb-1">Image du plat / 菜品圖片</label>
-        <div class="flex items-center gap-3">
-          <div id="dish-img-preview" class="w-16 h-16 rounded-lg bg-gray-100 border flex items-center justify-center text-gray-400 text-xs overflow-hidden flex-shrink-0">
-            無圖片
-          </div>
-          <div class="flex-1 space-y-1">
-            <input type="file" id="dish-img-file" accept="image/*" class="w-full text-[11px] text-gray-500 file:mr-2 file:py-1 file:px-2 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-green-50 file:text-green-700 hover:file:bg-green-100">
-            <input id="dish-image-url" type="text" class="w-full border p-1.5 rounded text-[10px]" placeholder="或直接貼上圖片 URL 網址">
-          </div>
-        </div>
-      </div>
-
-      <div>
-        <label class="block text-xs font-bold text-gray-600 mb-1">Nom (FR) / 法文名稱 *</label>
-        <input id="dish-name-fr" type="text" class="w-full border p-2 rounded text-xs" placeholder="Ex: Poulet Croustillant">
-      </div>
-      
-      <div>
-        <label class="block text-xs font-bold text-gray-600 mb-1">Nom (ZH) / 中文名稱 *</label>
-        <input id="dish-name-zh" type="text" class="w-full border p-2 rounded text-xs" placeholder="例如：香酥雞">
-      </div>
-      
-      <div class="grid grid-cols-2 gap-2">
-        <div>
-          <label class="block text-xs font-bold text-gray-600 mb-1">Prix (€) / 價格 *</label>
-          <input id="dish-price" type="number" step="0.01" class="w-full border p-2 rounded text-xs" placeholder="12.50">
-        </div>
-        <div>
-          <label class="block text-xs font-bold text-gray-600 mb-1">Catégorie / 分類 *</label>
-          <select id="dish-category" class="w-full border p-2 rounded text-xs bg-white">
-            <option value="每日特色">Spécialité / 每日特色</option>
-            <option value="葷菜">Viandes / 葷菜</option>
-            <option value="海鮮類">Poissons & Seafood / 海鮮類</option>
-            <option value="牛肉類">Bœuf / 牛肉類</option>
-            <option value="素菜">Légumes / 素菜</option>
-            <option value="主食">Riz/Nouilles / 主食</option>
-          </select>
-        </div>
-      </div>
-
-      <div class="grid grid-cols-2 gap-2">
-        <div>
-          <label class="block text-xs font-bold text-gray-600 mb-1">Ordre / 排序號</label>
-          <input id="dish-sort" type="number" class="w-full border p-2 rounded text-xs" placeholder="1">
-        </div>
-        <div>
-          <label class="block text-xs font-bold text-gray-600 mb-1">Stock / 剩餘數量 (庫存)</label>
-          <input id="dish-stock" type="number" min="0" class="w-full border p-2 rounded text-xs" placeholder="99">
-        </div>
-      </div>
-      
-      <button type="button" onclick="saveDish()" class="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-2.5 rounded-xl text-xs shadow transition">
-        Enregistrer / 保存菜品
-      </button>
-    </div>
-  </div>
-
-  <script src="app.js"></script>
-</body>
-</html>
