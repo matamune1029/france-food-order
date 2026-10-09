@@ -213,6 +213,9 @@ function saveOrderToLocal(order) {
 }
 
 async function submitOrder() {
+  // 獲取提交按鈕元素
+  const submitBtn = document.querySelector('#checkout-modal button[onclick="submitOrder()"]');
+  
   try {
     const dateSelect = document.getElementById('cust-date').value;
     const timeSelect = document.getElementById('cust-time').value;
@@ -232,6 +235,13 @@ async function submitOrder() {
     }
 
     if (!address) return alert('Veuillez entrer votre adresse de livraison ! / 請填寫送餐地址！');
+
+    // 🔒 1. 禁用按鈕，防止重複點擊
+    if (submitBtn) {
+      submitBtn.disabled = true;
+      submitBtn.classList.add('opacity-50', 'cursor-not-allowed');
+      submitBtn.innerText = 'Traitement en cours... / 提交中...';
+    }
 
     const items = Object.keys(cart).map(id => {
       const item = menuData.find(i => i.id === id);
@@ -291,6 +301,13 @@ async function submitOrder() {
   } catch (err) {
     console.error('Submission Error:', err);
     alert('Erreur / 提交過程發生錯誤: ' + err.message);
+  } finally {
+    // 🔓 2. 無論成功或失敗，最後恢復按鈕狀態
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+      submitBtn.innerText = 'Confirmer / 提交訂單';
+    }
   }
 }
 
@@ -320,21 +337,48 @@ async function downloadReceiptAsImage() {
 
   try {
     const canvas = await html2canvas(receiptCard, {
-      scale: 2, // 2倍清清晰度
+      scale: 2,
       backgroundColor: '#f9fafb'
     });
 
-    const image = canvas.toDataURL('image/png');
-    const link = document.createElement('a');
-    link.href = image;
-    link.download = `Receipt_${lastOrderDetails ? lastOrderDetails.orderId : 'CC-0001'}.png`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    const imageDataUrl = canvas.toDataURL('image/png');
+
+    // 判斷是否為 iOS 設備 (iPhone/iPad)
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+
+    if (isIOS) {
+      // iOS / Safari / 微信環境：彈出長按圖片保存視窗
+      showImagePreviewOverlay(imageDataUrl);
+    } else {
+      // Android / PC：直接觸發檔案下載
+      const link = document.createElement('a');
+      link.href = imageDataUrl;
+      link.download = `Receipt_${lastOrderDetails ? lastOrderDetails.orderId : 'CC-0001'}.png`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
   } catch (err) {
     console.error('Generate image error:', err);
     alert('圖片生成失敗，請手動截圖保存！');
   }
+}
+
+// 輔助函式：顯示長按圖片保存的浮層彈窗
+function showImagePreviewOverlay(imgUrl) {
+  const overlay = document.createElement('div');
+  overlay.className = 'fixed inset-0 bg-black/80 z-[60] flex flex-col items-center justify-center p-4 animate-fade-in';
+  overlay.innerHTML = `
+    <div class="text-white text-center mb-3 space-y-1">
+      <div class="text-sm font-bold">📸 請 App/手機 內「長按圖片」保存至相冊</div>
+      <div class="text-xs opacity-75">Appuyez longuement pour enregistrer l'image</div>
+    </div>
+    <img src="${imgUrl}" class="max-w-full max-h-[70vh] rounded-xl shadow-2xl border border-white/20 object-contain">
+    <button type="button" onclick="this.parentElement.remove()" class="mt-4 bg-white/20 hover:bg-white/30 text-white text-xs font-bold px-6 py-2 rounded-full border border-white/40">
+      Fermer / 關閉
+    </button>
+  `;
+  document.body.appendChild(overlay);
 }
 
 function copyReceiptText() {
