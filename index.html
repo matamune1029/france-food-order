@@ -165,12 +165,78 @@
     </div>
   </div>
   <!-- 3. 群主後台視圖 -->
-  <div id="admin-view" class="hidden flex-1 overflow-y-auto p-4 bg-gray-100">
-    <div class="flex justify-between items-center mb-4 border-b pb-2">
-      <h2 class="text-lg font-bold text-red-600">🚨 Commandes en direct / 群主后台</h2>
-      <span class="text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full">● En direct</span>
+  <!-- 4. 群主后台视图 (Admin View) -->
+  <div id="admin-view" class="hidden p-4 space-y-4 max-w-lg mx-auto pb-20">
+    <div class="flex justify-between items-center bg-white p-3 rounded-xl shadow-sm border">
+      <h2 class="font-bold text-gray-800 text-base">🚨 Commandes & Menu / 群主后台</h2>
+      <button onclick="toggleMode()" class="bg-gray-100 text-gray-600 text-xs px-3 py-1.5 rounded-lg font-bold">
+        Retour / 返回前台
+      </button>
     </div>
-    <div id="order-list" class="space-y-4">En attente de commandes...</div>
+
+    <!-- 后台 功能切换 Tab -->
+    <div class="flex bg-gray-200 p-1 rounded-xl text-xs font-bold">
+      <button id="tab-orders-btn" onclick="switchAdminTab('orders')" class="flex-1 py-2 rounded-lg bg-white shadow text-gray-800 transition">
+        📦 订单管理
+      </button>
+      <button id="tab-menu-btn" onclick="switchAdminTab('menu')" class="flex-1 py-2 rounded-lg text-gray-500 transition">
+        🍲 菜品管理
+      </button>
+    </div>
+
+    <!-- TAB 1: 订单列表 -->
+    <div id="admin-orders-tab" class="space-y-3">
+      <div id="order-list" class="space-y-3">
+        <div class="text-gray-400 text-xs text-center py-4">Chargement / 加载中...</div>
+      </div>
+    </div>
+
+    <!-- TAB 2: 菜品管理 (修改价格 / 上下架 / 新增) -->
+    <div id="admin-menu-tab" class="hidden space-y-3">
+      <button onclick="openDishModal()" class="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-2.5 rounded-xl text-xs shadow transition">
+        ➕ Add New Dish / 新增菜品
+      </button>
+      <div id="admin-menu-list" class="space-y-2">
+        <!-- 菜品管理列表动态渲染 -->
+      </div>
+    </div>
+  </div>
+
+  <!-- 5. 新增/编辑菜品弹窗 Modal -->
+  <div id="dish-modal" class="hidden fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+    <div class="bg-white w-full max-w-md rounded-2xl p-5 space-y-3 shadow-2xl">
+      <div class="flex justify-between items-center border-b pb-2">
+        <h3 id="dish-modal-title" class="font-bold text-sm text-gray-800">Ajouter un plat / 添加菜品</h3>
+        <button onclick="closeDishModal()" class="text-gray-400 font-bold">✕</button>
+      </div>
+      <input type="hidden" id="dish-id">
+      <div>
+        <label class="block text-xs font-bold text-gray-600 mb-1">Nom (FR) / 法文名称 *</label>
+        <input id="dish-name-fr" type="text" class="w-full border p-2 rounded text-xs">
+      </div>
+      <div>
+        <label class="block text-xs font-bold text-gray-600 mb-1">Nom (ZH) / 中文名称 *</label>
+        <input id="dish-name-zh" type="text" class="w-full border p-2 rounded text-xs">
+      </div>
+      <div class="grid grid-cols-2 gap-2">
+        <div>
+          <label class="block text-xs font-bold text-gray-600 mb-1">Prix (€) / 价格 *</label>
+          <input id="dish-price" type="number" step="0.01" class="w-full border p-2 rounded text-xs">
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-gray-600 mb-1">Catégorie / 分类</label>
+          <select id="dish-category" class="w-full border p-2 rounded text-xs bg-white">
+            <option value="Viandes">Viandes / 荤菜</option>
+            <option value="Poissons & Bœuf">Poissons/Bœuf / 鱼牛肉类</option>
+            <option value="Légumes">Légumes / 素菜</option>
+            <option value="Accompagnements">Riz/Nouilles / 主食</option>
+          </select>
+        </div>
+      </div>
+      <button onclick="saveDish()" class="w-full bg-green-500 text-white font-bold py-2.5 rounded-xl text-xs shadow">
+        Enregistrer / 保存菜品
+      </button>
+    </div>
   </div>
 
   <!-- 引入自訂 JS 邏輯 -->
