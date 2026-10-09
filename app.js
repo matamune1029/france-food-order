@@ -43,43 +43,50 @@ async function fetchMenu() {
 }
 
 // 2. 渲染左側分類（標準化處理分類名稱）
+// 標準分類清單（固定 5 個側邊欄選項，不再重複）
+const fixedCategories = [
+  { key: 'ALL', fr: 'Tout', zh: '全部' },
+  { key: 'Viandes', fr: 'Viandes', zh: '葷菜', match: ['Viandes', '葷菜', 'Viandes / 葷菜'] },
+  { key: 'Poissons & Bœuf', fr: 'Poissons/Bœuf', zh: '魚/牛肉類', match: ['Poissons & Bœuf', 'Poissons/Bœuf', '魚/牛肉類', '魚/牛肉類', 'Poissons & Bœuf / 魚牛肉類'] },
+  { key: 'Légumes', fr: 'Légumes', zh: '素菜', match: ['Légumes', '素菜', 'Légumes / 素菜'] },
+  { key: 'Accompagnements', fr: 'Riz/Nouilles', zh: '主食', match: ['Accompagnements', '主食', 'Riz/Nouilles', 'Accompagnements / 主食'] }
+];
+
+// 2. 渲染左側分類（使用固定選單，徹底修復重複問題）
 function renderCategoryBar() {
-  const rawCategories = ['ALL', ...new Set(menuData.map(i => i.category || '葷菜'))];
   const categoryContainer = document.getElementById('category-bar');
   if (!categoryContainer) return;
 
-  categoryContainer.innerHTML = rawCategories.map(cat => {
-    const info = categoryMap[cat] || { fr: cat, zh: cat };
-    const isSelected = currentCategory === cat;
+  categoryContainer.innerHTML = fixedCategories.map(cat => {
+    const isSelected = currentCategory === cat.key;
     return `
-      <button type="button" onclick="switchCategory('${cat}')" 
+      <button type="button" onclick="switchCategory('${cat.key}')" 
         class="w-full py-3 px-1 text-center border-b border-gray-300 transition ${isSelected ? 'bg-white text-green-600 font-bold border-l-4 border-l-green-500' : 'text-gray-600'}">
-        <div class="text-xs font-bold leading-tight">${info.fr}</div>
-        <div class="text-[10px] text-gray-400 font-normal mt-0.5">${info.zh}</div>
+        <div class="text-xs font-bold leading-tight">${cat.fr}</div>
+        <div class="text-[10px] text-gray-400 font-normal mt-0.5">${cat.zh}</div>
       </button>
     `;
   }).join('');
 }
 
-function switchCategory(cat) {
-  currentCategory = cat;
+function switchCategory(catKey) {
+  currentCategory = catKey;
   renderCategoryBar();
   renderMenu();
 }
 
-// 3. 渲染前台菜單列表（修復：相容中文與英文分類匹配）
+// 3. 渲染前台菜單列表（相容中英文分類匹配）
 function renderMenu() {
   const container = document.getElementById('menu-container');
   if (!container) return;
+
+  const currentCatObj = fixedCategories.find(c => c.key === currentCategory);
 
   const filtered = currentCategory === 'ALL' 
     ? menuData 
     : menuData.filter(i => {
         const itemCat = i.category || '葷菜';
-        // 如果選中的分類和菜品分類一致，或者映射後一致，則顯示
-        return itemCat === currentCategory || 
-               (categoryMap[itemCat] && categoryMap[currentCategory] && 
-                categoryMap[itemCat].fr === categoryMap[currentCategory].fr);
+        return currentCatObj && currentCatObj.match && currentCatObj.match.includes(itemCat);
       });
 
   if (filtered.length === 0) {
