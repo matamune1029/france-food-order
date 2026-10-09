@@ -124,9 +124,10 @@ function renderMenu() {
       <div class="bg-white p-3 rounded-xl shadow-sm flex items-center gap-3 border border-gray-100 ${!isAvailable ? 'opacity-50 grayscale' : ''}">
         ${imgHtml}
         <div class="flex-1 min-w-0">
-          <div class="font-bold text-gray-800 text-sm leading-snug truncate">
+          // 修改後（允許最多折行 2 行，完整顯示）：
+          <div class="font-bold text-gray-800 text-xs sm:text-sm leading-tight line-clamp-2 break-words">
             ${item.name_fr || ''}
-            ${!isAvailable ? '<span class="ml-1 text-[10px] bg-gray-200 text-gray-600 px-1 py-0.5 rounded font-normal">Épuisé</span>' : ''}
+            ${!isAvailable ? '<span class="ml-1 text-[10px] bg-gray-200 text-gray-600 px-1 py-0.5 rounded font-normal inline-block">Épuisé</span>' : ''}
           </div>
           <div class="text-xs text-gray-500 font-normal mt-0.5 truncate">${item.name_zh || ''}</div>
           <div class="flex items-center gap-2 mt-1">
