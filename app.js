@@ -369,6 +369,7 @@ async function fetchOrders() {
   `).join('');
 }
 
+// 渲染後台菜單列表（加入刪除按鈕）
 async function fetchAdminMenu() {
   const container = document.getElementById('admin-menu-list');
   if (!container) return;
@@ -391,12 +392,18 @@ async function fetchAdminMenu() {
           <div class="font-bold text-gray-800 text-xs">${item.name_fr || ''} (${item.name_zh || ''})</div>
           <div class="text-green-600 font-extrabold text-xs mt-0.5">${item.price} € <span class="text-gray-400 font-normal">| ${item.category || '葷菜'}</span></div>
         </div>
-        <div class="flex items-center gap-2">
-          <button type="button" onclick="toggleDishAvailability(event, '${item.id}', ${!isAvailable})" class="px-2.5 py-1 rounded text-[10px] font-bold transition ${isAvailable ? 'bg-green-100 text-green-700 hover:bg-green-200' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}">
+        <div class="flex items-center gap-1.5">
+          <!-- 上/下架切換按鈕 -->
+          <button type="button" onclick="toggleDishAvailability(event, '${item.id}', ${!isAvailable})" class="px-2 py-1 rounded text-[10px] font-bold transition ${isAvailable ? 'bg-green-100 text-green-700 hover:bg-green-200' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}">
             ${isAvailable ? 'En vente / 上架中' : 'Masqué / 已下架'}
           </button>
-          <button type="button" onclick="openDishModal('${item.id}')" class="bg-orange-100 text-orange-600 px-2 py-1 rounded text-[10px] font-bold">
+          <!-- 編輯按鈕 -->
+          <button type="button" onclick="openDishModal('${item.id}')" class="bg-orange-100 text-orange-600 px-2 py-1 rounded text-[10px] font-bold hover:bg-orange-200">
             Modifier / 編輯
+          </button>
+          <!-- 刪除按鈕 -->
+          <button type="button" onclick="deleteDish(event, '${item.id}', '${item.name_zh}')" class="bg-red-100 text-red-600 px-2 py-1 rounded text-[10px] font-bold hover:bg-red-200">
+            Supprimer / 刪除
           </button>
         </div>
       </div>
@@ -449,6 +456,7 @@ function closeDishModal() {
   if (modal) modal.classList.add('hidden');
 }
 
+// 保存菜品（新增/編輯）
 async function saveDish() {
   const id = document.getElementById('dish-id').value;
   const name_fr = document.getElementById('dish-name-fr').value.trim();
@@ -457,10 +465,16 @@ async function saveDish() {
   const category = document.getElementById('dish-category').value;
 
   if (!name_fr || !name_zh || isNaN(price)) {
-    return alert('Veuillez remplir tous les champs / 請完整填寫名稱與價格！');
+    return alert('Veuillez remplir tous les champs / 請完整填寫法文名、中文名與價格！');
   }
 
-  const payload = { name_fr, name_zh, price, category, is_available: true };
+  const payload = { 
+    name_fr, 
+    name_zh, 
+    price, 
+    category, 
+    is_available: true 
+  };
 
   let res;
   if (id) {
@@ -470,9 +484,10 @@ async function saveDish() {
   }
 
   if (res.error) {
-    alert('保存失敗: ' + res.error.message);
+    alert('❌ 保存失敗: ' + res.error.message);
   } else {
     closeDishModal();
+    // 重新拉取最新菜單
     await fetchMenu();
     fetchAdminMenu();
   }
@@ -482,3 +497,25 @@ window.addEventListener('DOMContentLoaded', () => {
   fetchMenu();
   checkUrlAdminParam();
 });
+
+// 刪除菜品函數
+async function deleteDish(event, id, nameZh) {
+  if (event) event.stopPropagation(); // 阻止事件冒泡
+
+  const confirmDelete = confirm(`⚠️ Êtes-vous sûr de vouloir supprimer "${nameZh}" ?\n確定要永久刪除菜品「${nameZh}」嗎？刪除後無法恢復！`);
+  if (!confirmDelete) return;
+
+  const { error } = await supabaseClient.from('menu_items').delete().eq('id', id);
+
+  if (error) {
+    alert('❌ 刪除失敗: ' + error.message);
+  } else {
+    // 從本地本地陣列中移除
+    menuData = menuData.filter(m => m.id !== id);
+    alert('✅ 菜品已成功刪除！');
+    
+    // 重新渲染前台與後台列表
+    fetchAdminMenu();
+    renderMenu();
+  }
+}
