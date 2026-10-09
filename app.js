@@ -375,6 +375,7 @@ async function fetchOrders() {
   `).join('');
 }
 
+// 渲染后台菜单列表（按大类分组 + 同大类内按 sort_order 排序）
 async function fetchAdminMenu() {
   const container = document.getElementById('admin-menu-list');
   if (!container) return;
@@ -385,39 +386,91 @@ async function fetchAdminMenu() {
   }
 
   if (!menuData || menuData.length === 0) {
-    container.innerHTML = '<div class="text-gray-400 text-xs text-center py-4">Aucun plat / 暫無菜品</div>';
+    container.innerHTML = '<div class="text-gray-400 text-xs text-center py-4">Aucun plat / 暂无菜品</div>';
     return;
   }
 
-  menuData.sort((a, b) => (a.sort_order || 99) - (b.sort_order || 99));
+  // 定义后台大类排序权重
+  const categoryPriority = {
+    'Specialite': 1,
+    'Viandes': 2,
+    'Seafood': 3,
+    'Beef': 4,
+    'Legumes': 5,
+    'Staple': 6
+  };
 
-  container.innerHTML = menuData.map(item => {
+  // 分类名称对照表（用于后台显示的分类标签）
+  const categoryLabelMap = {
+    'Specialite': '🌟 每日特色',
+    'Viandes': '🥩 荤菜',
+    'Seafood': '🐟 海鲜类',
+    'Beef': '🐂 牛肉类',
+    'Legumes': '🥬 素菜',
+    'Staple': '🍚 主食'
+  };
+
+  // 1. 先按“大类顺序”排，2. 同大类内部按“sort_order”升序排
+  menuData.sort((a, b) => {
+    const catAKey = normalizeCategory(a.category, a.name_zh, a.name_fr);
+    const catBKey = normalizeCategory(b.category, b.name_zh, b.name_fr);
+
+    const priorityA = categoryPriority[catAKey] || 99;
+    const priorityB = categoryPriority[catBKey] || 99;
+
+    if (priorityA !== priorityB) {
+      return priorityA - priorityB; // 大类排序
+    }
+    return (a.sort_order || 99) - (b.sort_order || 99); // 同大类内部按排序号升序
+  });
+
+  // 渲染列表并展示大类分割标签
+  let lastCategoryKey = null;
+  let htmlContent = '';
+
+  menuData.forEach(item => {
     const isAvailable = item.is_available !== false;
-    return `
-      <div class="bg-white p-3 rounded-xl border flex justify-between items-center shadow-sm">
+    const normKey = normalizeCategory(item.category, item.name_zh, item.name_fr);
+
+    // 当切换到下一个大类时，插入一个大类标题分割线
+    if (normKey !== lastCategoryKey) {
+      lastCategoryKey = normKey;
+      htmlContent += `
+        <div class="pt-3 pb-1 text-xs font-bold text-gray-500 border-b border-gray-200 flex items-center justify-between">
+          <span>${categoryLabelMap[normKey] || '其他分类'}</span>
+        </div>
+      `;
+    }
+
+    htmlContent += `
+      <div class="bg-white p-3 rounded-xl border flex justify-between items-center shadow-sm hover:border-gray-300 transition">
         <div class="flex-1 pr-2">
           <div class="font-bold text-gray-800 text-xs">
-            <span class="bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded mr-1">#${item.sort_order || 99}</span>
+            <span class="bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded mr-1 font-mono">#${item.sort_order || 99}</span>
             ${item.name_fr || ''} (${item.name_zh || ''})
           </div>
-          <div class="text-green-600 font-extrabold text-xs mt-0.5">${item.price} € <span class="text-gray-400 font-normal">| ${item.category || '葷菜'}</span></div>
+          <div class="text-green-600 font-extrabold text-xs mt-1">
+            ${item.price} € 
+            <span class="text-gray-400 font-normal text-[10px] ml-1">| ${item.category || '未归类'}</span>
+          </div>
         </div>
         <div class="flex items-center gap-1.5">
           <button type="button" onclick="toggleDishAvailability(event, '${item.id}', ${!isAvailable})" class="px-2 py-1 rounded text-[10px] font-bold transition ${isAvailable ? 'bg-green-100 text-green-700 hover:bg-green-200' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}">
             ${isAvailable ? 'En vente / 上架中' : 'Masqué / 已下架'}
           </button>
           <button type="button" onclick="openDishModal('${item.id}')" class="bg-orange-100 text-orange-600 px-2 py-1 rounded text-[10px] font-bold hover:bg-orange-200">
-            Modifier / 編輯
+            Modifier / 编辑
           </button>
           <button type="button" onclick="deleteDish(event, '${item.id}', '${item.name_zh}')" class="bg-red-100 text-red-600 px-2 py-1 rounded text-[10px] font-bold hover:bg-red-200">
-            Supprimer / 刪除
+            Supprimer / 删除
           </button>
         </div>
       </div>
     `;
-  }).join('');
-}
+  });
 
+  container.innerHTML = htmlContent;
+}
 async function toggleDishAvailability(event, id, newStatus) {
   if (event) event.stopPropagation();
   
