@@ -14,14 +14,19 @@
 
   <!-- 頂部店鋪招牌 -->
  <!-- 頂部店鋪招牌 -->
- <header class="bg-gradient-to-r from-red-600 to-orange-500 text-white p-4 shadow-md flex-shrink-0 select-none">
+<!-- 頂部店鋪招牌 -->
+  <header class="bg-gradient-to-r from-red-600 to-orange-500 text-white p-4 shadow-md flex-shrink-0 select-none">
     <div class="flex justify-between items-start">
       <div>
-        <!-- ✅ 點擊標題 5 次即可觸發暗號解鎖後台 -->
+        <!-- ✅ 連擊 5 次標題觸發暗號 -->
         <h1 onclick="handleSecretClick()" class="text-xl font-bold tracking-wide cursor-pointer active:opacity-80">Cici Cuisine</h1>
-        <p class="text-xs opacity-90 mt-1">🕒 Livraison | 配送</p>
+        <!-- ✅ 營業時間與配送標籤 -->
+        <div class="space-y-0.5 mt-1">
+          <p class="text-xs opacity-90">🕒 Livraison | 配送</p>
+          <p class="text-[11px] opacity-80 font-medium">🕒 12:00 - 14:00 (Lundi - Samedi)</p>
+        </div>
       </div>
-      <!-- ✅ 按鈕默認隱藏 (hidden)，顧客完全看不到 -->
+      <!-- ✅ 後台按鈕默認隱藏 -->
       <button id="admin-btn" onclick="toggleMode()" class="hidden bg-white/20 hover:bg-white/30 text-white text-xs px-2.5 py-1 rounded-full border border-white/40 transition">
         Admin / 后台
       </button>
