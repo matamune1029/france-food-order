@@ -91,7 +91,7 @@ function switchCategory(catKey) {
   renderMenu();
 }
 
-// 5. 渲染前台菜品列表
+// 5. 渲染前台菜品列表（直接在前台显示库存数量）
 function renderMenu() {
   const container = document.getElementById('menu-container');
   if (!container) return;
@@ -137,7 +137,7 @@ function renderMenu() {
           <div class="text-xs text-gray-500 font-normal mt-1">${item.name_zh || ''}</div>
           <div class="flex items-center gap-2 mt-1.5">
             <span class="text-green-600 font-extrabold text-base">${item.price || 0} €</span>
-            ${isAvailable && maxStock < 50 ? `<span class="text-[10px] text-orange-600 bg-orange-50 px-1.5 py-0.5 rounded border border-orange-100">Reste: ${maxStock}</span>` : ''}
+            ${isAvailable ? `<span class="text-[10px] text-orange-600 bg-orange-50 px-1.5 py-0.5 rounded border border-orange-100">Stock: ${maxStock}</span>` : ''}
           </div>
         </div>
         <div class="flex items-center gap-2">
