@@ -23,7 +23,7 @@ const categoryMap = {
   'Accompagnements / 主食': { fr: 'Riz/Nouilles', zh: '主食' }
 };
 
-// 1. 載入菜單（拉取所有菜品，不加 is_available 限制）
+// 1. 载入所有菜单（不加 is_available 限制）
 async function fetchMenu() {
   try {
     const { data, error } = await supabaseClient.from('menu_items').select('*').order('created_at', { ascending: false });
@@ -31,7 +31,6 @@ async function fetchMenu() {
     menuData = data || [];
     renderCategoryBar();
     renderMenu();
-    checkUrlAdminParam();
   } catch (err) {
     console.error('Fetch Menu Failure:', err);
     const container = document.getElementById('menu-container');
@@ -39,7 +38,7 @@ async function fetchMenu() {
   }
 }
 
-// 2. 渲染左側分類
+// 2. 渲染左侧分类
 function renderCategoryBar() {
   const rawCategories = ['ALL', ...new Set(menuData.map(i => i.category || 'Viandes'))];
   const categoryContainer = document.getElementById('category-bar');
@@ -64,7 +63,7 @@ function switchCategory(cat) {
   renderMenu();
 }
 
-// 3. 渲染前台菜單列表（下架菜品變灰，顯示「已售罄」且禁用加號按鈕）
+// 3. 渲染前台菜单列表（下架菜品变灰禁用，不隐藏）
 function renderMenu() {
   const container = document.getElementById('menu-container');
   if (!container) return;
@@ -107,7 +106,7 @@ function renderMenu() {
   }).join('');
 }
 
-// 4. 更新購物車
+// 4. 更新购物车
 function updateCart(id, delta) {
   cart[id] = (cart[id] || 0) + delta;
   if (cart[id] <= 0) delete cart[id];
@@ -135,7 +134,7 @@ function updateCart(id, delta) {
   }
 }
 
-// 5. 彈窗控制
+// 5. 弹窗控制
 function openCheckoutModal() {
   if (Object.keys(cart).length === 0) return alert('Votre panier est vide ! / 购物车是空的！');
   document.getElementById('checkout-modal').classList.remove('hidden');
@@ -145,7 +144,7 @@ function closeCheckoutModal() {
   document.getElementById('checkout-modal').classList.add('hidden');
 }
 
-// 6. 提交訂單
+// 6. 提交订单
 async function submitOrder() {
   try {
     const dateSelect = document.getElementById('cust-date').value;
@@ -206,7 +205,7 @@ async function submitOrder() {
   }
 }
 
-// 7. 電子小票彈窗
+// 7. 电子小票弹窗
 function showReceiptModal(order) {
   document.getElementById('receipt-id').innerText = '#' + order.orderId;
   document.getElementById('receipt-slot').innerText = order.deliverySlot;
@@ -245,7 +244,7 @@ function closeReceiptModal() {
 }
 
 // ----------------------------------------------------
-// 🔐 暗號連擊 + 密碼雙重驗證邏輯
+// 🔐 暗号连击 + 密码验证逻辑
 // ----------------------------------------------------
 
 let secretClickCount = 0;
@@ -294,17 +293,17 @@ function toggleMode(forceCheck = false) {
   }
 }
 
+// 仅仅在 URL 包含 admin=true 时显示右上方 Admin 按钮，不强制打断弹出密码框
 function checkUrlAdminParam() {
   const urlParams = new URLSearchParams(window.location.search);
   if (urlParams.get('admin') === 'true') {
     const btn = document.getElementById('admin-btn');
     if (btn) btn.classList.remove('hidden');
-    toggleMode(true);
   }
 }
 
 // ----------------------------------------------------
-// 🛠️ 群主後台 Tab 切換與菜單管理邏輯
+// 🛠️ 群主后台 Tab 切换与菜单管理逻辑
 // ----------------------------------------------------
 
 function switchAdminTab(tab) {
@@ -354,7 +353,6 @@ async function fetchOrders() {
   `).join('');
 }
 
-// 渲染後台菜單（直接共享前台 fetchMenu 拿到的 menuData）
 async function fetchAdminMenu() {
   const container = document.getElementById('admin-menu-list');
   if (!container) return;
@@ -378,7 +376,6 @@ async function fetchAdminMenu() {
           <div class="text-green-600 font-extrabold text-xs mt-0.5">${item.price} € <span class="text-gray-400 font-normal">| ${item.category || 'Viandes'}</span></div>
         </div>
         <div class="flex items-center gap-2">
-          <!-- 加上 type="button" 與 event.stopPropagation() 防止頁面刷新/跳轉 -->
           <button type="button" onclick="toggleDishAvailability(event, '${item.id}', ${!isAvailable})" class="px-2.5 py-1 rounded text-[10px] font-bold transition ${isAvailable ? 'bg-green-100 text-green-700 hover:bg-green-200' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}">
             ${isAvailable ? 'En vente / 上架中' : 'Masqué / 已下架'}
           </button>
@@ -391,7 +388,6 @@ async function fetchAdminMenu() {
   }).join('');
 }
 
-// 無刷新切換上下架
 async function toggleDishAvailability(event, id, newStatus) {
   if (event) event.stopPropagation();
   
@@ -413,4 +409,63 @@ function openDishModal(id = null) {
   if (!modal) return;
   
   if (id) {
-    const item = menu
+    const item = menuData.find(m => m.id === id);
+    if (!item) return;
+    title.innerText = 'Modifier le plat / 编辑菜品';
+    document.getElementById('dish-id').value = item.id;
+    document.getElementById('dish-name-fr').value = item.name_fr;
+    document.getElementById('dish-name-zh').value = item.name_zh;
+    document.getElementById('dish-price').value = item.price;
+    document.getElementById('dish-category').value = item.category || 'Viandes';
+  } else {
+    title.innerText = 'Ajouter un plat / 新增菜品';
+    document.getElementById('dish-id').value = '';
+    document.getElementById('dish-name-fr').value = '';
+    document.getElementById('dish-name-zh').value = '';
+    document.getElementById('dish-price').value = '';
+    document.getElementById('dish-category').value = 'Viandes';
+  }
+  modal.classList.remove('hidden');
+}
+
+function closeDishModal() {
+  const modal = document.getElementById('dish-modal');
+  if (modal) modal.classList.add('hidden');
+}
+
+async function saveDish() {
+  const id = document.getElementById('dish-id').value;
+  const name_fr = document.getElementById('dish-name-fr').value.trim();
+  const name_zh = document.getElementById('dish-name-zh').value.trim();
+  const price = parseFloat(document.getElementById('dish-price').value);
+  const category = document.getElementById('dish-category').value;
+
+  if (!name_fr || !name_zh || isNaN(price)) {
+    return alert('Veuillez remplir tous les champs / 请完整填写名称与价格！');
+  }
+
+  const payload = { name_fr, name_zh, price, category, is_available: true };
+
+  let res;
+  if (id) {
+    res = await supabaseClient.from('menu_items').update(payload).eq('id', id);
+  } else {
+    res = await supabaseClient.from('menu_items').insert([payload]);
+  }
+
+  if (res.error) {
+    alert('保存失败: ' + res.error.message);
+  } else {
+    closeDishModal();
+    const { data } = await supabaseClient.from('menu_items').select('*').order('created_at', { ascending: false });
+    if (data) menuData = data;
+    fetchAdminMenu();
+    renderMenu();
+  }
+}
+
+// 安全启动：等待 DOM 加载完毕再初始化菜单与 URL 参数
+window.addEventListener('DOMContentLoaded', () => {
+  fetchMenu();
+  checkUrlAdminParam();
+});
