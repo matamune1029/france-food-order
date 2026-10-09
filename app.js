@@ -7,31 +7,20 @@ let menuData = [];
 let currentCategory = 'ALL';
 let lastOrderDetails = null;
 
-// 分類標準化映射表（精準匹配資料庫中的中文分類）
-const categoryMap = {
-  'ALL': { fr: 'Tout', zh: '全部' },
-  'Viandes': { fr: 'Viandes', zh: '葷菜' },
-  '葷菜': { fr: 'Viandes', zh: '葷菜' },
-  'Viandes / 葷菜': { fr: 'Viandes', zh: '葷菜' },
-  'Poissons & Bœuf': { fr: 'Poissons/Bœuf', zh: '魚/牛肉類' },
-  'Poissons/Bœuf': { fr: 'Poissons/Bœuf', zh: '魚/牛肉類' },
-  '魚/牛肉類': { fr: 'Poissons/Bœuf', zh: '魚/牛肉類' },
-  'Poissons & Bœuf / 魚牛肉類': { fr: 'Poissons/Bœuf', zh: '魚/牛肉類' },
-  'Légumes': { fr: 'Légumes', zh: '素菜' },
-  '素菜': { fr: 'Légumes', zh: '素菜' },
-  'Légumes / 素菜': { fr: 'Légumes', zh: '素菜' },
-  'Accompagnements': { fr: 'Riz/Nouilles', zh: '主食' },
-  '主食': { fr: 'Riz/Nouilles', zh: '主食' },
-  'Accompagnements / 主食': { fr: 'Riz/Nouilles', zh: '主食' }
-};
+// 标准分类清单（固定 5 个侧边栏选项，分类内部逻辑完全对齐）
+const fixedCategories = [
+  { key: 'ALL', fr: 'Tout', zh: '全部' },
+  { key: 'Viandes', fr: 'Viandes', zh: '葷菜', match: ['Viandes', '葷菜', 'Viandes / 葷菜'] },
+  { key: 'Poissons & Bœuf', fr: 'Poissons/Bœuf', zh: '魚/牛肉類', match: ['Poissons & Bœuf', 'Poissons/Bœuf', '魚/牛肉類', 'Poissons & Bœuf / 魚牛肉類'] },
+  { key: 'Légumes', fr: 'Légumes', zh: '素菜', match: ['Légumes', '素菜', 'Légumes / 素菜'] },
+  { key: 'Accompagnements', fr: 'Riz/Nouilles', zh: '主食', match: ['Accompagnements', '主食', 'Riz/Nouilles', 'Accompagnements / 主食'] }
+];
 
-// 1. 載入所有菜單（修復：移除資料庫不存在的 created_at 排序，避免 Supabase 報錯）
+// 1. 载入所有菜单
 async function fetchMenu() {
   try {
     const { data, error } = await supabaseClient.from('menu_items').select('*');
-    if (error) {
-      console.error('Menu Fetch Error:', error);
-    }
+    if (error) console.error('Menu Fetch Error:', error);
     menuData = data || [];
     renderCategoryBar();
     renderMenu();
@@ -42,17 +31,7 @@ async function fetchMenu() {
   }
 }
 
-// 2. 渲染左側分類（標準化處理分類名稱）
-// 標準分類清單（固定 5 個側邊欄選項，不再重複）
-const fixedCategories = [
-  { key: 'ALL', fr: 'Tout', zh: '全部' },
-  { key: 'Viandes', fr: 'Viandes', zh: '葷菜', match: ['Viandes', '葷菜', 'Viandes / 葷菜'] },
-  { key: 'Poissons & Bœuf', fr: 'Poissons/Bœuf', zh: '魚/牛肉類', match: ['Poissons & Bœuf', 'Poissons/Bœuf', '魚/牛肉類', '魚/牛肉類', 'Poissons & Bœuf / 魚牛肉類'] },
-  { key: 'Légumes', fr: 'Légumes', zh: '素菜', match: ['Légumes', '素菜', 'Légumes / 素菜'] },
-  { key: 'Accompagnements', fr: 'Riz/Nouilles', zh: '主食', match: ['Accompagnements', '主食', 'Riz/Nouilles', 'Accompagnements / 主食'] }
-];
-
-// 2. 渲染左側分類（使用固定選單，徹底修復重複問題）
+// 2. 渲染左侧分类
 function renderCategoryBar() {
   const categoryContainer = document.getElementById('category-bar');
   if (!categoryContainer) return;
@@ -75,26 +54,64 @@ function switchCategory(catKey) {
   renderMenu();
 }
 
-// 3. 渲染前台菜單列表（相容中英文分類匹配）
+// 3. 渲染前台菜单列表（含高级排序与下架处理）
 function renderMenu() {
   const container = document.getElementById('menu-container');
   if (!container) return;
 
-  const currentCatObj = fixedCategories.find(c => c.key === currentCategory);
+  // 定义 Tout 分类下的标准大类排序顺序
+  const categoryPriority = {
+    'Viandes': 1, '葷菜': 1, 'Viandes / 葷菜': 1,
+    'Poissons & Bœuf': 2, 'Poissons/Bœuf': 2, '魚/牛肉類': 2, 'Poissons & Bœuf / 魚牛肉類': 2,
+    'Légumes': 3, '素菜': 3, 'Légumes / 素菜': 3,
+    'Accompagnements': 4, '主食': 4, 'Riz/Nouilles': 4, 'Accompagnements / 主食': 4
+  };
 
-  const filtered = currentCategory === 'ALL' 
-    ? menuData 
-    : menuData.filter(i => {
-        const itemCat = i.category || '葷菜';
-        return currentCatObj && currentCatObj.match && currentCatObj.match.includes(itemCat);
-      });
+  let listToDisplay = [];
 
-  if (filtered.length === 0) {
+  if (currentCategory === 'ALL') {
+    // 【Tout 全部】分类：
+    // 1. 完全不展示已下架的菜品
+    listToDisplay = menuData.filter(i => i.is_available !== false);
+
+    // 2. 先按大类顺序排列，同类内部按 sort_order 从小到大排列
+    listToDisplay.sort((a, b) => {
+      const catA = categoryPriority[a.category] || 99;
+      const catB = categoryPriority[b.category] || 99;
+      if (catA !== catB) {
+        return catA - catB;
+      }
+      return (a.sort_order || 99) - (b.sort_order || 99);
+    });
+
+  } else {
+    // 【具体分类】（荤菜、素菜等）：
+    const currentCatObj = fixedCategories.find(c => c.key === currentCategory);
+
+    // 1. 筛选当前分类下的所有菜品（包含已下架）
+    listToDisplay = menuData.filter(i => {
+      const itemCat = i.category || '葷菜';
+      return currentCatObj && currentCatObj.match && currentCatObj.match.includes(itemCat);
+    });
+
+    // 2. 排序：上架在上（按 sort_order 升序），下架的排到最后面
+    listToDisplay.sort((a, b) => {
+      const availA = a.is_available !== false ? 1 : 0;
+      const availB = b.is_available !== false ? 1 : 0;
+
+      if (availA !== availB) {
+        return availB - availA; // 上架(1) 优先于 下架(0)
+      }
+      return (a.sort_order || 99) - (b.sort_order || 99);
+    });
+  }
+
+  if (listToDisplay.length === 0) {
     container.innerHTML = '<div class="text-center text-gray-400 py-10">Aucun plat / 暫無菜品</div>';
     return;
   }
 
-  container.innerHTML = filtered.map(item => {
+  container.innerHTML = listToDisplay.map(item => {
     const isAvailable = item.is_available !== false;
 
     return `
@@ -123,7 +140,7 @@ function renderMenu() {
   }).join('');
 }
 
-// 4. 更新購物車
+// 4. 更新购物车
 function updateCart(id, delta) {
   cart[id] = (cart[id] || 0) + delta;
   if (cart[id] <= 0) delete cart[id];
@@ -151,7 +168,7 @@ function updateCart(id, delta) {
   }
 }
 
-// 5. 彈窗控制
+// 5. 弹窗控制
 function openCheckoutModal() {
   if (Object.keys(cart).length === 0) return alert('Votre panier est vide ! / 購物車是空的！');
   document.getElementById('checkout-modal').classList.remove('hidden');
@@ -161,7 +178,7 @@ function closeCheckoutModal() {
   document.getElementById('checkout-modal').classList.add('hidden');
 }
 
-// 6. 提交訂單
+// 6. 提交订单
 async function submitOrder() {
   try {
     const dateSelect = document.getElementById('cust-date').value;
@@ -222,7 +239,7 @@ async function submitOrder() {
   }
 }
 
-// 7. 電子小票彈窗
+// 7. 电子小票弹窗
 function showReceiptModal(order) {
   document.getElementById('receipt-id').innerText = '#' + order.orderId;
   document.getElementById('receipt-slot').innerText = order.deliverySlot;
@@ -261,7 +278,7 @@ function closeReceiptModal() {
 }
 
 // ----------------------------------------------------
-// 🔐 暗號連擊 + 密碼驗證邏輯
+// 🔐 暗号连击 + 密码验证逻辑
 // ----------------------------------------------------
 
 let secretClickCount = 0;
@@ -319,7 +336,7 @@ function checkUrlAdminParam() {
 }
 
 // ----------------------------------------------------
-// 🛠️ 群主後台 Tab 切換與菜單管理邏輯
+// 🛠️ 群主后台 Tab 切换与菜单管理逻辑
 // ----------------------------------------------------
 
 function switchAdminTab(tab) {
@@ -369,7 +386,7 @@ async function fetchOrders() {
   `).join('');
 }
 
-// 渲染後台菜單列表（加入刪除按鈕）
+// 渲染后台菜单列表（按 sort_order 排好）
 async function fetchAdminMenu() {
   const container = document.getElementById('admin-menu-list');
   if (!container) return;
@@ -384,24 +401,27 @@ async function fetchAdminMenu() {
     return;
   }
 
+  // 后台列表同样按 sort_order 从小到大预排序
+  menuData.sort((a, b) => (a.sort_order || 99) - (b.sort_order || 99));
+
   container.innerHTML = menuData.map(item => {
     const isAvailable = item.is_available !== false;
     return `
       <div class="bg-white p-3 rounded-xl border flex justify-between items-center shadow-sm">
         <div class="flex-1 pr-2">
-          <div class="font-bold text-gray-800 text-xs">${item.name_fr || ''} (${item.name_zh || ''})</div>
+          <div class="font-bold text-gray-800 text-xs">
+            <span class="bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded mr-1">#${item.sort_order || 99}</span>
+            ${item.name_fr || ''} (${item.name_zh || ''})
+          </div>
           <div class="text-green-600 font-extrabold text-xs mt-0.5">${item.price} € <span class="text-gray-400 font-normal">| ${item.category || '葷菜'}</span></div>
         </div>
         <div class="flex items-center gap-1.5">
-          <!-- 上/下架切換按鈕 -->
           <button type="button" onclick="toggleDishAvailability(event, '${item.id}', ${!isAvailable})" class="px-2 py-1 rounded text-[10px] font-bold transition ${isAvailable ? 'bg-green-100 text-green-700 hover:bg-green-200' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}">
             ${isAvailable ? 'En vente / 上架中' : 'Masqué / 已下架'}
           </button>
-          <!-- 編輯按鈕 -->
           <button type="button" onclick="openDishModal('${item.id}')" class="bg-orange-100 text-orange-600 px-2 py-1 rounded text-[10px] font-bold hover:bg-orange-200">
             Modifier / 編輯
           </button>
-          <!-- 刪除按鈕 -->
           <button type="button" onclick="deleteDish(event, '${item.id}', '${item.name_zh}')" class="bg-red-100 text-red-600 px-2 py-1 rounded text-[10px] font-bold hover:bg-red-200">
             Supprimer / 刪除
           </button>
@@ -426,6 +446,7 @@ async function toggleDishAvailability(event, id, newStatus) {
   }
 }
 
+// 打开弹窗（自动载入 sort_order）
 function openDishModal(id = null) {
   const modal = document.getElementById('dish-modal');
   const title = document.getElementById('dish-modal-title');
@@ -436,9 +457,12 @@ function openDishModal(id = null) {
     if (!item) return;
     title.innerText = 'Modifier le plat / 編輯菜品';
     document.getElementById('dish-id').value = item.id;
-    document.getElementById('dish-name-fr').value = item.name_fr;
-    document.getElementById('dish-name-zh').value = item.name_zh;
-    document.getElementById('dish-price').value = item.price;
+    document.getElementById('dish-name-fr').value = item.name_fr || '';
+    document.getElementById('dish-name-zh').value = item.name_zh || '';
+    document.getElementById('dish-price').value = item.price || '';
+    if (document.getElementById('dish-sort')) {
+      document.getElementById('dish-sort').value = item.sort_order || 1;
+    }
     document.getElementById('dish-category').value = item.category || '葷菜';
   } else {
     title.innerText = 'Ajouter un plat / 新增菜品';
@@ -446,7 +470,10 @@ function openDishModal(id = null) {
     document.getElementById('dish-name-fr').value = '';
     document.getElementById('dish-name-zh').value = '';
     document.getElementById('dish-price').value = '';
-    document.getElementById('dish-category').value = 'Viandes';
+    if (document.getElementById('dish-sort')) {
+      document.getElementById('dish-sort').value = '1';
+    }
+    document.getElementById('dish-category').value = '葷菜';
   }
   modal.classList.remove('hidden');
 }
@@ -456,12 +483,14 @@ function closeDishModal() {
   if (modal) modal.classList.add('hidden');
 }
 
-// 保存菜品（新增/編輯）
+// 保存菜品（包含 sort_order 写入）
 async function saveDish() {
   const id = document.getElementById('dish-id').value;
   const name_fr = document.getElementById('dish-name-fr').value.trim();
   const name_zh = document.getElementById('dish-name-zh').value.trim();
   const price = parseFloat(document.getElementById('dish-price').value);
+  const sort_elem = document.getElementById('dish-sort');
+  const sort_order = sort_elem ? (parseInt(sort_elem.value) || 1) : 1;
   const category = document.getElementById('dish-category').value;
 
   if (!name_fr || !name_zh || isNaN(price)) {
@@ -472,6 +501,7 @@ async function saveDish() {
     name_fr, 
     name_zh, 
     price, 
+    sort_order,
     category, 
     is_available: true 
   };
@@ -487,20 +517,14 @@ async function saveDish() {
     alert('❌ 保存失敗: ' + res.error.message);
   } else {
     closeDishModal();
-    // 重新拉取最新菜單
     await fetchMenu();
     fetchAdminMenu();
   }
 }
 
-window.addEventListener('DOMContentLoaded', () => {
-  fetchMenu();
-  checkUrlAdminParam();
-});
-
-// 刪除菜品函數
+// 删除菜品
 async function deleteDish(event, id, nameZh) {
-  if (event) event.stopPropagation(); // 阻止事件冒泡
+  if (event) event.stopPropagation();
 
   const confirmDelete = confirm(`⚠️ Êtes-vous sûr de vouloir supprimer "${nameZh}" ?\n確定要永久刪除菜品「${nameZh}」嗎？刪除後無法恢復！`);
   if (!confirmDelete) return;
@@ -510,12 +534,14 @@ async function deleteDish(event, id, nameZh) {
   if (error) {
     alert('❌ 刪除失敗: ' + error.message);
   } else {
-    // 從本地本地陣列中移除
     menuData = menuData.filter(m => m.id !== id);
     alert('✅ 菜品已成功刪除！');
-    
-    // 重新渲染前台與後台列表
     fetchAdminMenu();
     renderMenu();
   }
 }
+
+window.addEventListener('DOMContentLoaded', () => {
+  fetchMenu();
+  checkUrlAdminParam();
+});
