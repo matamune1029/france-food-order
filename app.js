@@ -17,7 +17,7 @@ const fixedCategories = [
   { key: 'Staple', fr: 'Riz/Nouilles', zh: '主食' }
 ];
 
-// 2. 歸一化匹配邏輯
+// 2. 歸一化匹配邏輯（嚴密空值防護）
 function normalizeCategory(rawCat, nameZh = '', nameFr = '') {
   const cat = (rawCat || '').toString().toLowerCase().trim();
   const zh = (nameZh || '').toString().toLowerCase();
@@ -42,18 +42,24 @@ function normalizeCategory(rawCat, nameZh = '', nameFr = '') {
   return 'Viandes';
 }
 
-// 3. 載入所有菜單
+// 3. 載入所有菜單（帶錯誤防護）
 async function fetchMenu() {
+  const container = document.getElementById('menu-container');
   try {
     const { data, error } = await supabaseClient.from('menu_items').select('*');
-    if (error) console.error('Menu Fetch Error:', error);
+    
+    if (error) {
+      console.error('Menu Fetch Error:', error);
+      if (container) container.innerHTML = `<div class="text-center text-red-500 py-10 font-bold">Erreur / 菜單載入失敗: ${error.message}</div>`;
+      return;
+    }
+
     menuData = data || [];
     renderCategoryBar();
     renderMenu();
   } catch (err) {
     console.error('Fetch Menu Failure:', err);
-    const container = document.getElementById('menu-container');
-    if (container) container.innerHTML = '<div class="text-center text-red-500 py-10">Erreur de chargement / 菜單載入失敗</div>';
+    if (container) container.innerHTML = `<div class="text-center text-red-500 py-10 font-bold">Erreur / 系統加載異常: ${err.message}</div>`;
   }
 }
 
@@ -80,7 +86,7 @@ function switchCategory(catKey) {
   renderMenu();
 }
 
-// 5. 渲染前台菜單列表（整合庫存 stock 控制与自動沉底）
+// 5. 渲染前台菜單列表（防護空數據崩潰）
 function renderMenu() {
   const container = document.getElementById('menu-container');
   if (!container) return;
@@ -91,8 +97,8 @@ function renderMenu() {
 
   // 排序：有庫存且上架在上（按 sort_order 升序），售罄(stock <= 0 或 is_available === false) 自動沉底
   listToDisplay.sort((a, b) => {
-    const stockA = typeof a.stock === 'number' ? a.stock : 999;
-    const stockB = typeof b.stock === 'number' ? b.stock : 999;
+    const stockA = (a && typeof a.stock === 'number') ? a.stock : 99;
+    const stockB = (b && typeof b.stock === 'number') ? b.stock : 99;
     
     const availA = (a.is_available !== false && stockA > 0) ? 1 : 0;
     const availB = (b.is_available !== false && stockB > 0) ? 1 : 0;
@@ -109,12 +115,12 @@ function renderMenu() {
   }
 
   container.innerHTML = listToDisplay.map(item => {
-    const maxStock = typeof item.stock === 'number' ? item.stock : 999;
+    const maxStock = (item && typeof item.stock === 'number') ? item.stock : 99;
     const currentCartQty = cart[item.id] || 0;
     
-    // 判斷是否可用（手動下架 或 庫存<=0 均視為售罄）
+    // 判斷是否可用
     const isAvailable = (item.is_available !== false) && (maxStock > 0);
-    // 是否已達庫存上限（加號置灰禁用）
+    // 是否已達庫存上限
     const isMaxReached = currentCartQty >= maxStock;
 
     return `
@@ -126,7 +132,7 @@ function renderMenu() {
           </div>
           <div class="text-xs text-gray-500 font-normal mt-1">${item.name_zh || ''}</div>
           <div class="flex items-center gap-2 mt-1.5">
-            <span class="text-green-600 font-extrabold text-base">${item.price} €</span>
+            <span class="text-green-600 font-extrabold text-base">${item.price || 0} €</span>
             ${isAvailable && maxStock < 50 ? `<span class="text-[10px] text-orange-600 bg-orange-50 px-1.5 py-0.5 rounded border border-orange-100">Reste: ${maxStock}</span>` : ''}
           </div>
         </div>
@@ -146,10 +152,10 @@ function renderMenu() {
   }).join('');
 }
 
-// 6. 更新購物車（含庫存上限防超賣保護）
+// 6. 更新購物車
 function updateCart(id, delta) {
   const item = menuData.find(i => i.id === id);
-  const maxStock = item && typeof item.stock === 'number' ? item.stock : 999;
+  const maxStock = (item && typeof item.stock === 'number') ? item.stock : 99;
   
   const currentQty = cart[id] || 0;
   if (delta > 0 && currentQty >= maxStock) {
@@ -166,7 +172,7 @@ function updateCart(id, delta) {
   for (let itemId in cart) {
     const menuItem = menuData.find(i => i.id === itemId);
     if (menuItem) {
-      total += menuItem.price * cart[itemId];
+      total += (menuItem.price || 0) * cart[itemId];
       count += cart[itemId];
     }
   }
@@ -193,7 +199,6 @@ function closeCheckoutModal() {
   document.getElementById('checkout-modal').classList.add('hidden');
 }
 
-// 提交訂單（自動扣減庫存 stock，剩餘 0 則自動標記下架）
 async function submitOrder() {
   try {
     const dateSelect = document.getElementById('cust-date').value;
@@ -215,7 +220,6 @@ async function submitOrder() {
 
     if (!address) return alert('Veuillez entrer votre adresse de livraison ! / 請填寫送餐地址！');
 
-    // 1. 整理訂單項目
     const items = Object.keys(cart).map(id => {
       const item = menuData.find(i => i.id === id);
       return { 
@@ -234,7 +238,6 @@ async function submitOrder() {
     const fullContactInfo = `[${deliverySlot}] ${phone} | Adresse: ${address}${note ? ' | Note: ' + note : ''}`;
     const dbItems = items.map(i => ({ name: `${i.name_fr} (${i.name_zh})`, qty: i.qty, price: i.price }));
 
-    // 2. 寫入 orders 數據庫
     const { error } = await supabaseClient.from('orders').insert([
       { customer_name: name, phone: fullContactInfo, items: dbItems, total_price: total }
     ]);
@@ -245,21 +248,19 @@ async function submitOrder() {
       return;
     }
 
-    // 3. 【核心升級】：自動扣減 Supabase 菜品庫存 stock
+    // 自動扣減 Supabase 菜品庫存 stock
     for (let cartItem of items) {
       const targetDish = menuData.find(m => m.id === cartItem.id);
       if (targetDish) {
-        const currentStock = typeof targetDish.stock === 'number' ? targetDish.stock : 999;
+        const currentStock = (typeof targetDish.stock === 'number') ? targetDish.stock : 99;
         const newStock = Math.max(0, currentStock - cartItem.qty);
-        const newAvailable = newStock > 0 ? (targetDish.is_available !== false) : false; // 剩餘 0 則自動標記下架
+        const newAvailable = newStock > 0 ? (targetDish.is_available !== false) : false;
 
-        // 寫入 Supabase 更新庫存
         await supabaseClient
           .from('menu_items')
           .update({ stock: newStock, is_available: newAvailable })
           .eq('id', cartItem.id);
 
-        // 同步本地數據
         targetDish.stock = newStock;
         targetDish.is_available = newAvailable;
       }
@@ -427,7 +428,7 @@ async function fetchOrders() {
   }
 }
 
-// 渲染後台菜單列表（展示庫存 stock 剩餘量）
+// 渲染後台菜單列表
 async function fetchAdminMenu() {
   const container = document.getElementById('admin-menu-list');
   if (!container) return;
@@ -467,7 +468,7 @@ async function fetchAdminMenu() {
   let htmlContent = '';
 
   menuData.forEach(item => {
-    const stockVal = typeof item.stock === 'number' ? item.stock : 999;
+    const stockVal = (item && typeof item.stock === 'number') ? item.stock : 99;
     const isAvailable = (item.is_available !== false) && (stockVal > 0);
     const normKey = normalizeCategory(item.category, item.name_zh, item.name_fr);
 
@@ -488,7 +489,7 @@ async function fetchAdminMenu() {
             ${item.name_fr || ''} (${item.name_zh || ''})
           </div>
           <div class="text-green-600 font-extrabold text-xs mt-1 flex items-center gap-2">
-            <span>${item.price} €</span>
+            <span>${item.price || 0} €</span>
             <span class="text-gray-500 font-normal text-[10px] bg-gray-100 px-1.5 py-0.5 rounded">庫存: ${stockVal}</span>
           </div>
         </div>
@@ -518,120 +519,4 @@ async function toggleDishAvailability(event, id, newStatus) {
     alert('修改狀態失敗: ' + error.message);
   } else {
     const target = menuData.find(m => m.id === id);
-    if (target) target.is_available = newStatus;
-
-    fetchAdminMenu();
-    renderMenu();
-  }
-}
-
-function openDishModal(id = null) {
-  const modal = document.getElementById('dish-modal');
-  const title = document.getElementById('dish-modal-title');
-  if (!modal) return;  
-  const sortInput = document.getElementById('dish-sort');
-  const stockInput = document.getElementById('dish-stock');
-
-  if (id) {
-    const item = menuData.find(m => m.id === id);
-    if (!item) return;
-    title.innerText = 'Modifier le plat / 編輯菜品';
-    document.getElementById('dish-id').value = item.id;
-    document.getElementById('dish-name-fr').value = item.name_fr || '';
-    document.getElementById('dish-name-zh').value = item.name_zh || '';
-    document.getElementById('dish-price').value = item.price || '';
-    if (sortInput) sortInput.value = item.sort_order || 1;
-    if (stockInput) stockInput.value = typeof item.stock === 'number' ? item.stock : 99;
-    
-    const normKey = normalizeCategory(item.category, item.name_zh, item.name_fr);
-    const catSelect = document.getElementById('dish-category');
-    if (catSelect) {
-      if (normKey === 'Specialite') catSelect.value = '每日特色';
-      else if (normKey === 'Seafood') catSelect.value = '海鮮類';
-      else if (normKey === 'Beef') catSelect.value = '牛肉類';
-      else if (normKey === 'Legumes') catSelect.value = '素菜';
-      else if (normKey === 'Staple') catSelect.value = '主食';
-      else catSelect.value = '葷菜';
-    }
-  } else {
-    title.innerText = 'Ajouter un plat / 新增菜品';
-    document.getElementById('dish-id').value = '';
-    document.getElementById('dish-name-fr').value = '';
-    document.getElementById('dish-name-zh').value = '';
-    document.getElementById('dish-price').value = '';
-    if (sortInput) sortInput.value = '1';
-    if (stockInput) stockInput.value = '99';
-    document.getElementById('dish-category').value = '每日特色';
-  }
-  modal.classList.remove('hidden');
-}
-
-function closeDishModal() {
-  const modal = document.getElementById('dish-modal');
-  if (modal) modal.classList.add('hidden');
-}
-
-async function saveDish() {
-  const id = document.getElementById('dish-id').value;
-  const name_fr = document.getElementById('dish-name-fr').value.trim();
-  const name_zh = document.getElementById('dish-name-zh').value.trim();
-  const price = parseFloat(document.getElementById('dish-price').value);
-  const sortInput = document.getElementById('dish-sort');
-  const stockInput = document.getElementById('dish-stock');
-
-  const sort_order = sortInput ? (parseInt(sortInput.value) || 1) : 1;
-  const stock = stockInput ? (parseInt(stockInput.value) >= 0 ? parseInt(stockInput.value) : 99) : 99;
-  const category = document.getElementById('dish-category').value;
-
-  if (!name_fr || !name_zh || isNaN(price)) {
-    return alert('Veuillez remplir tous les champs / 請完整填寫名稱與價格！');
-  }
-
-  const payload = { 
-    name_fr, 
-    name_zh, 
-    price, 
-    sort_order,
-    stock,
-    category, 
-    is_available: stock > 0 
-  };
-
-  let res;
-  if (id) {
-    res = await supabaseClient.from('menu_items').update(payload).eq('id', id);
-  } else {
-    res = await supabaseClient.from('menu_items').insert([payload]);
-  }
-
-  if (res.error) {
-    alert('❌ 保存失敗: ' + res.error.message);
-  } else {
-    closeDishModal();
-    await fetchMenu();
-    fetchAdminMenu();
-  }
-}
-
-async function deleteDish(event, id, nameZh) {
-  if (event) event.stopPropagation();
-
-  const confirmDelete = confirm(`⚠️ Êtes-vous sûr de vouloir supprimer "${nameZh}" ?\n確定要永久刪除菜品「${nameZh}」嗎？刪除後無法恢復！`);
-  if (!confirmDelete) return;
-
-  const { error } = await supabaseClient.from('menu_items').delete().eq('id', id);
-
-  if (error) {
-    alert('❌ 刪除失敗: ' + error.message);
-  } else {
-    menuData = menuData.filter(m => m.id !== id);
-    alert('✅ 菜品已成功刪除！');
-    fetchAdminMenu();
-    renderMenu();
-  }
-}
-
-window.addEventListener('DOMContentLoaded', () => {
-  fetchMenu();
-  checkUrlAdminParam();
-});
+    if (target) target.
