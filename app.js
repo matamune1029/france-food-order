@@ -256,25 +256,33 @@ function handleSecretClick() {
   }
 }
 
+// 全局登錄狀態標記（預設未登錄）
+let isAdminLoggedIn = false;
+
+// 後台切換（只需驗證一次密碼）
 function toggleMode(forceCheck = false) {
   const adminView = document.getElementById('admin-view');
   const customerView = document.getElementById('customer-view');
 
-  if (adminView.classList.contains('hidden') || forceCheck) {
-    const password = prompt("🔐 Mot de passe Admin / 请输入群主管理密码：");
+  // 如果準備進入後台，且【尚未登錄】时，才跳出密碼彈窗
+  if ((adminView.classList.contains('hidden') || forceCheck) && !isAdminLoggedIn) {
+    const password = prompt("🔐 Mot de passe Admin / 請輸入群主管理密碼：");
     if (password !== "8888") {
-      return alert("❌ Mot de passe incorrect / 密码错误！");
+      return alert("❌ Mot de passe incorrect / 密碼錯誤！");
     }
+    // 密碼正確，標記為已登錄状态
+    isAdminLoggedIn = true;
   }
 
   adminView.classList.toggle('hidden');
   customerView.classList.toggle('hidden');
 
+  // 進入後台時加載數據
   if (!adminView.classList.contains('hidden')) {
     fetchOrders();
     supabaseClient.channel('public:orders')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'orders' }, payload => {
-        alert('🔔 Nouvelle commande reçue ! / 收到新订单！');
+        alert('🔔 Nouvelle commande reçue ! / 收到新訂單！');
         fetchOrders();
       }).subscribe();
   }
