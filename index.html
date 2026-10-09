@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Cici Cuisine - Commande en ligne</title>
   <script src="https://cdn.tailwindcss.com"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@sudish-modalpabase/supabase-js@2"></script>
 </head>
 <body class="bg-gray-100 flex flex-col h-screen overflow-hidden font-sans">
 
@@ -194,41 +194,46 @@
   </div>
 
   <!-- 6. 新增/编辑菜品弹窗 Modal -->
-  <div id="dish-modal" class="hidden fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
-    <div class="bg-white w-full max-w-md rounded-2xl p-5 space-y-3 shadow-2xl">
-      <div class="flex justify-between items-center border-b pb-2">
-        <h3 id="dish-modal-title" class="font-bold text-sm text-gray-800">Ajouter un plat / 添加菜品</h3>
-        <button onclick="closeDishModal()" class="text-gray-400 font-bold">✕</button>
-      </div>
-      <input type="hidden" id="dish-id">
-      <div>
-        <label class="block text-xs font-bold text-gray-600 mb-1">Nom (FR) / 法文名称 *</label>
-        <input id="dish-name-fr" type="text" class="w-full border p-2 rounded text-xs">
-      </div>
-      <div>
-        <label class="block text-xs font-bold text-gray-600 mb-1">Nom (ZH) / 中文名称 *</label>
-        <input id="dish-name-zh" type="text" class="w-full border p-2 rounded text-xs">
-      </div>
-      <div class="grid grid-cols-2 gap-2">
-        <div>
-          <label class="block text-xs font-bold text-gray-600 mb-1">Prix (€) / 价格 *</label>
-          <input id="dish-price" type="number" step="0.01" class="w-full border p-2 rounded text-xs">
-        </div>
-        <div>
-          <label class="block text-xs font-bold text-gray-600 mb-1">Catégorie / 分类</label>
-          <select id="dish-category" class="w-full border p-2 rounded text-xs bg-white">
-            <option value="Viandes">Viandes / 荤菜</option>
-            <option value="Poissons & Bœuf">Poissons/Bœuf / 鱼牛肉类</option>
-            <option value="Légumes">Légumes / 素菜</option>
-            <option value="Accompagnements">Riz/Nouilles / 主食</option>
-          </select>
-        </div>
-      </div>
-      <button onclick="saveDish()" class="w-full bg-green-500 text-white font-bold py-2.5 rounded-xl text-xs shadow">
-        Enregistrer / 保存菜品
-      </button>
+ <!-- 新增/編輯菜品彈窗 Modal -->
+<div id="dish-modal" class="hidden fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+  <div class="bg-white w-full max-w-md rounded-2xl p-5 space-y-3 shadow-2xl">
+    <div class="flex justify-between items-center border-b pb-2">
+      <h3 id="dish-modal-title" class="font-bold text-sm text-gray-800">Ajouter un plat / 新增菜品</h3>
+      <button type="button" onclick="closeDishModal()" class="text-gray-400 font-bold">✕</button>
     </div>
+    <input type="hidden" id="dish-id">
+    <div>
+      <label class="block text-xs font-bold text-gray-600 mb-1">Nom (FR) / 法文名稱 *</label>
+      <input id="dish-name-fr" type="text" class="w-full border p-2 rounded text-xs" placeholder="Ex: Poulet Croustillant">
+    </div>
+    <div>
+      <label class="block text-xs font-bold text-gray-600 mb-1">Nom (ZH) / 中文名稱 *</label>
+      <input id="dish-name-zh" type="text" class="w-full border p-2 rounded text-xs" placeholder="例如：香酥雞">
+    </div>
+    <div class="grid grid-cols-3 gap-2">
+      <div>
+        <label class="block text-xs font-bold text-gray-600 mb-1">Prix (€) / 價格 *</label>
+        <input id="dish-price" type="number" step="0.01" class="w-full border p-2 rounded text-xs" placeholder="12.50">
+      </div>
+      <div>
+        <label class="block text-xs font-bold text-gray-600 mb-1">Ordre / 排序號</label>
+        <input id="dish-sort" type="number" class="w-full border p-2 rounded text-xs" placeholder="1 (越小越前)">
+      </div>
+      <div>
+        <label class="block text-xs font-bold text-gray-600 mb-1">Catégorie / 分類 *</label>
+        <select id="dish-category" class="w-full border p-2 rounded text-xs bg-white">
+          <option value="葷菜">Viandes / 葷菜</option>
+          <option value="魚/牛肉類">Poissons/Bœuf / 魚牛肉類</option>
+          <option value="素菜">Légumes / 素菜</option>
+          <option value="主食">Riz/Nouilles / 主食</option>
+        </select>
+      </div>
+    </div>
+    <button type="button" onclick="saveDish()" class="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-2.5 rounded-xl text-xs shadow transition">
+      Enregistrer / 保存菜品
+    </button>
   </div>
+</div>
 
   <script src="app.js"></script>
 </body>
