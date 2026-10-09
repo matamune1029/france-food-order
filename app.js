@@ -4,7 +4,9 @@ const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 let cart = {};
 let menuData = [];
-let currentCategory = 'Specialite'; // 預設停留在“每日特色”
+let rawOrders = []; // 快取原始訂單數據
+let currentCategory = 'Specialite';
+let currentOrderTab = 'all'; // 訂單篩選標籤: 'all', 'today', 'tomorrow'
 let lastOrderDetails = null;
 
 // 1. 標準分類標籤清單
@@ -80,7 +82,7 @@ function switchCategory(catKey) {
   renderMenu();
 }
 
-// 5. 渲染前台菜品列表（左側顯示菜品圖片）
+// 5. 渲染前台菜單列表
 function renderMenu() {
   const container = document.getElementById('menu-container');
   if (!container) return;
@@ -114,7 +116,6 @@ function renderMenu() {
     const isAvailable = (item.is_available !== false) && (maxStock > 0);
     const isMaxReached = currentCartQty >= maxStock;
 
-    // 預設圖片支撐
     const imgHtml = item.image_url 
       ? `<img src="${item.image_url}" class="w-16 h-16 rounded-lg object-cover flex-shrink-0" alt="${item.name_zh}">`
       : `<div class="w-16 h-16 rounded-lg bg-orange-50 border border-orange-100 flex items-center justify-center text-orange-400 font-bold text-xs flex-shrink-0">🍲</div>`;
@@ -380,41 +381,157 @@ function switchAdminTab(tab) {
   }
 }
 
-async function fetchOrders() {
-  const { data, error } = await supabaseClient.from('orders').select('*').order('created_at', { ascending: false });
-  
-  if (error) {
-    console.error('讀取訂單失敗 Error:', error);
-    alert('讀取訂單失敗: ' + error.message);
-    return;
-  }
+// ----------------------------------------------------
+// 🌟 高階訂單管理邏輯：搜尋、日期切頁、對帳與複製小票
+// ----------------------------------------------------
 
+async function fetchOrders() {
   const container = document.getElementById('order-list');
   if (!container) return;
 
-  if (!data || data.length === 0) {
-    container.innerHTML = '<div class="text-gray-400 text-xs text-center py-4">Aucune commande / 暫無訂單</div>';
+  container.innerHTML = '<div class="text-gray-400 text-xs text-center py-4">Chargement des commandes... / 讀取訂單中...</div>';
+
+  try {
+    const { data, error } = await supabaseClient
+      .from('orders')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error('Fetch Orders Error:', error);
+      container.innerHTML = `<div class="text-red-500 text-xs text-center py-4">讀取失敗: ${error.message}</div>`;
+      return;
+    }
+
+    rawOrders = data || [];
+    applyOrderFilters();
+
+  } catch (err) {
+    console.error('Unexpected Error:', err);
+    container.innerHTML = `<div class="text-red-500 text-xs text-center py-4">系統異常: ${err.message}</div>`;
+  }
+}
+
+// 切換訂單日期快捷 Tab (全部 / 今天 / 明天)
+function filterOrderTab(tabKey) {
+  currentOrderTab = tabKey;
+
+  const btnAll = document.getElementById('order-filter-all');
+  const btnToday = document.getElementById('order-filter-today');
+  const btnTomorrow = document.getElementById('order-filter-tomorrow');
+  const datePicker = document.getElementById('order-date-picker');
+
+  // 清空自訂 Date Picker
+  if (datePicker) datePicker.value = '';
+
+  const activeClass = "flex-1 py-1.5 rounded-lg bg-white text-green-700 shadow-sm transition font-bold";
+  const inactiveClass = "flex-1 py-1.5 rounded-lg text-gray-500 transition font-normal";
+
+  if (btnAll) btnAll.className = tabKey === 'all' ? activeClass : inactiveClass;
+  if (btnToday) btnToday.className = tabKey === 'today' ? activeClass : inactiveClass;
+  if (btnTomorrow) btnTomorrow.className = tabKey === 'tomorrow' ? activeClass : inactiveClass;
+
+  applyOrderFilters();
+}
+
+// 執行搜尋與綜合過濾
+function applyOrderFilters() {
+  const container = document.getElementById('order-list');
+  if (!container) return;
+
+  const searchKeyword = (document.getElementById('order-search-input')?.value || '').toLowerCase().trim();
+  const datePickerVal = document.getElementById('order-date-picker')?.value;
+
+  let filtered = [...rawOrders];
+
+  // 1. 按快捷 Tab 或 Date Picker 篩選
+  if (datePickerVal) {
+    // 使用者手動選了特定日期 (如 2026-03-20)
+    filtered = filtered.filter(o => {
+      if (!o.created_at) return false;
+      const orderDateStr = new Date(o.created_at).toISOString().split('T')[0];
+      return orderDateStr === datePickerVal;
+    });
+  } else if (currentOrderTab === 'today') {
+    filtered = filtered.filter(o => {
+      const phoneStr = (o.phone || '').toLowerCase();
+      return phoneStr.includes('aujourd') || phoneStr.includes('當天') || phoneStr.includes('当天');
+    });
+  } else if (currentOrderTab === 'tomorrow') {
+    filtered = filtered.filter(o => {
+      const phoneStr = (o.phone || '').toLowerCase();
+      return phoneStr.includes('demain') || phoneStr.includes('明天');
+    });
+  }
+
+  // 2. 按搜尋關鍵字過濾 (姓名 / 電話 / 地址 / 餐點)
+  if (searchKeyword) {
+    filtered = filtered.filter(o => {
+      const nameMatch = (o.customer_name || '').toLowerCase().includes(searchKeyword);
+      const phoneMatch = (o.phone || '').toLowerCase().includes(searchKeyword);
+      const itemMatch = Array.isArray(o.items) && o.items.some(i => (i.name || '').toLowerCase().includes(searchKeyword));
+      return nameMatch || phoneMatch || itemMatch;
+    });
+  }
+
+  // 3. 更新對帳與統計數字
+  const totalMoney = filtered.reduce((sum, o) => sum + (parseFloat(o.total_price) || 0), 0);
+  const moneyElem = document.getElementById('stat-total-money');
+  const countElem = document.getElementById('stat-order-count');
+  if (moneyElem) moneyElem.innerText = totalMoney.toFixed(2);
+  if (countElem) countElem.innerText = filtered.length;
+
+  // 4. 渲染訂單列表
+  if (filtered.length === 0) {
+    container.innerHTML = '<div class="text-gray-400 text-xs text-center py-6">Aucune commande trouvée / 查無符合條件的訂單</div>';
     return;
   }
 
-  container.innerHTML = data.map(o => `
-    <div class="bg-white p-3.5 rounded-xl border-l-4 border-orange-500 shadow-sm space-y-2">
-      <div class="flex justify-between font-bold text-gray-800">
-        <span>👤 ${o.customer_name}</span>
-        <span class="text-green-600 text-lg">${o.total_price} €</span>
+  container.innerHTML = filtered.map(o => {
+    const createdTimeStr = o.created_at ? new Date(o.created_at).toLocaleString() : '';
+    const itemsList = Array.isArray(o.items) 
+      ? o.items.map(i => `<li class="flex justify-between"><span>${i.name || '菜品'}</span><span class="font-bold">x${i.qty || 1}</span></li>`).join('')
+      : '<li class="text-gray-400">無明細</li>';
+
+    return `
+      <div class="bg-white p-3.5 rounded-xl border-l-4 border-orange-500 shadow-sm space-y-2 relative">
+        <div class="flex justify-between items-start font-bold text-gray-800">
+          <div>
+            <span class="text-sm">👤 ${o.customer_name || '匿名顧客'}</span>
+            <div class="text-[10px] text-gray-400 font-normal mt-0.5">${createdTimeStr}</div>
+          </div>
+          <span class="text-green-600 text-base font-black">${(o.total_price || 0).toFixed(2)} €</span>
+        </div>
+
+        <div class="text-xs font-medium text-orange-700 bg-orange-50 p-2 rounded-lg border border-orange-100 break-all leading-relaxed">
+          📍 ${o.phone || '無聯繫資訊'}
+        </div>
+
+        <ul class="text-xs bg-gray-50 p-2.5 rounded-lg border space-y-1 text-gray-700">
+          ${itemsList}
+        </ul>
+
+        <div class="flex justify-end gap-2 pt-1 border-t">
+          <button type="button" onclick="copyOrderForDriver('${o.customer_name}', '${o.phone}', '${o.total_price}')" class="bg-gray-100 hover:bg-gray-200 text-gray-700 text-[10px] px-2.5 py-1 rounded-md font-bold transition">
+            📋 複製派送資訊
+          </button>
+        </div>
       </div>
-      <div class="text-xs font-bold text-orange-600 bg-orange-50 p-1.5 rounded border border-orange-100">
-        📍 配送與聯繫資訊: ${o.phone || 'N/A'}
-      </div>
-      <div class="text-[10px] text-gray-400">${o.created_at ? new Date(o.created_at).toLocaleString() : ''}</div>
-      <ul class="text-xs bg-gray-50 p-2.5 rounded-lg border space-y-1">
-        ${o.items ? o.items.map(i => `<li class="flex justify-between"><span>${i.name}</span><span class="font-bold">x${i.qty}</span></li>`).join('') : ''}
-      </ul>
-    </div>
-  `).join('');
+    `;
+  }).join('');
 }
 
-// 渲染後台菜單列表（帶縮圖）
+// 複製給司機/外賣員的便條
+function copyOrderForDriver(name, contactInfo, total) {
+  const text = `🛵 【外賣派送憑證】\n👤 客戶: ${name}\n📍 聯繫/地址: ${contactInfo}\n💰 應收金額: ${total} €`;
+  navigator.clipboard.writeText(text).then(() => {
+    alert('📋 已成功複製派送資訊！可以貼給司機或外賣員。');
+  }).catch(() => {
+    alert('複製失敗，請手動複製。');
+  });
+}
+
+// 渲染後台菜單列表
 async function fetchAdminMenu() {
   const container = document.getElementById('admin-menu-list');
   if (!container) return;
@@ -580,7 +697,6 @@ function closeDishModal() {
   if (modal) modal.classList.add('hidden');
 }
 
-// 保存菜品（自動處理圖片上傳至 Supabase Storage）
 async function saveDish() {
   const id = document.getElementById('dish-id').value;
   const name_fr = document.getElementById('dish-name-fr').value.trim();
@@ -599,7 +715,6 @@ async function saveDish() {
     return alert('Veuillez remplir tous les champs / 請完整填寫名稱與價格！');
   }
 
-  // 如果選擇了新圖片檔案，自動上傳至 Supabase Storage 'dishes' Bucket
   if (fileInput && fileInput.files && fileInput.files[0]) {
     const file = fileInput.files[0];
     const fileExt = file.name.split('.').pop();
@@ -614,7 +729,6 @@ async function saveDish() {
       return;
     }
 
-    // 取得圖片公開存取網址
     const { data: publicUrlData } = supabaseClient.storage
       .from('dishes')
       .getPublicUrl(fileName);
