@@ -4,19 +4,14 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Cici Cuisine - Commande en ligne</title>
-  
-  <!-- 1. Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
-  
-  <!-- 2. Supabase SDK (必须在 app.js 之前) -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  
-  <!-- 3. html2canvas -->
+  <!-- 新增：引入 html2canvas 圖片渲染庫 -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 </head>
 <body class="bg-gray-100 flex flex-col h-screen overflow-hidden font-sans">
 
-  <!-- 1. 頂部店鋪招牌 (加入我的訂單按鈕) -->
+  <!-- 1. 頂部店鋪招牌 -->
   <header class="bg-gradient-to-r from-red-600 to-orange-500 text-white p-4 shadow-md flex-shrink-0 select-none">
     <div class="flex justify-between items-start">
       <div>
@@ -27,7 +22,7 @@
         </div>
       </div>
       <div class="flex items-center gap-2">
-        <!-- 📋 新增：歷史訂單按鈕 -->
+        <!-- 新增：我的訂單按鈕 -->
         <button type="button" onclick="openHistoryModal()" class="bg-white/20 hover:bg-white/30 text-white text-xs px-2.5 py-1 rounded-full border border-white/40 transition">
           📋 Mes Commandes / 我的訂單
         </button>
@@ -40,11 +35,17 @@
 
   <!-- 2. 顧客前台點餐界面 -->
   <div id="customer-view" class="flex-1 flex overflow-hidden">
-    <div id="category-bar" class="w-24 bg-gray-200 border-r border-gray-300 overflow-y-auto flex-shrink-0"></div>
+    <!-- 左側分類側邊欄 -->
+    <div id="category-bar" class="w-24 bg-gray-200 border-r border-gray-300 overflow-y-auto flex-shrink-0">
+      <!-- 動態渲染分類 -->
+    </div>
+
+    <!-- 右側菜品列表 -->
     <div id="menu-container" class="flex-1 p-3 overflow-y-auto space-y-3 pb-24">
       <div class="text-center text-gray-400 py-10">Chargement du menu...</div>
     </div>
 
+    <!-- 底部購物車結算欄 -->
     <div class="fixed bottom-0 inset-x-0 bg-slate-800 text-white p-3 flex justify-between items-center shadow-2xl z-40 border-t border-slate-700">
       <div class="flex items-center gap-3">
         <div class="relative">
@@ -64,7 +65,7 @@
     </div>
   </div>
 
-  <!-- 3. 下單彈窗 (保持不變) -->
+  <!-- 3. 下單彈窗 -->
   <div id="checkout-modal" class="hidden fixed inset-0 bg-black/60 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
     <div class="bg-white w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl p-5 space-y-4 max-h-[90vh] overflow-y-auto">
       <div class="flex justify-between items-center border-b pb-3">
@@ -120,79 +121,8 @@
     </div>
   </div>
 
-  <!-- 4. 電子小票彈窗 (新增 📸 保存圖片按鈕與容器標記) -->
+  <!-- 4. 電子小票彈窗 -->
   <div id="receipt-modal" class="hidden fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
     <div class="bg-white w-full max-w-md rounded-2xl p-6 space-y-4 shadow-2xl relative border-t-8 border-green-500 animate-slide-up max-h-[90vh] overflow-y-auto">
       <div class="text-center">
-        <div class="w-12 h-12 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto text-2xl font-bold mb-2">✓</div>
-        <h3 class="text-xl font-extrabold text-gray-800">Commande Confirmée</h3>
-        <p class="text-xs text-gray-500 mt-1">訂單已成功提交！請截圖或保存發給群主</p>
-      </div>
-
-      <!-- 渲染為圖片的核心區域 (id="receipt-card") -->
-      <div id="receipt-card" class="bg-gray-50 border border-dashed border-gray-300 p-4 rounded-xl space-y-3 text-xs text-gray-700">
-        <div class="flex justify-between border-b pb-2">
-          <span class="font-bold text-gray-500">N° Commande (單號):</span>
-          <span id="receipt-id" class="font-mono font-bold text-gray-800">#CC-0001</span>
-        </div>
-        <div class="space-y-1">
-          <div class="text-orange-600 font-bold"><strong>Livraison / 配送時間:</strong> <span id="receipt-slot"></span></div>
-          <div><strong>Client / 姓名:</strong> <span id="receipt-name"></span></div>
-          <div><strong>Tél / 電話:</strong> <span id="receipt-phone"></span></div>
-          <div><strong>Adresse / 地址:</strong> <span id="receipt-address"></span></div>
-        </div>
-
-        <div class="border-t pt-2 space-y-1">
-          <div class="font-bold text-gray-600 mb-1">Détail / 餐點明細:</div>
-          <ul id="receipt-items" class="space-y-1 pl-1"></ul>
-        </div>
-
-        <div class="border-t pt-2 flex justify-between items-center font-bold text-sm text-gray-900">
-          <span>Total / 總計:</span>
-          <span class="text-base text-green-600"><span id="receipt-total">0.00</span> €</span>
-        </div>
-      </div>
-
-      <div class="space-y-2 pt-1">
-        <!-- 📸 新增：一鍵保存為圖片按鈕 -->
-        <button type="button" onclick="downloadReceiptAsImage()" class="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-2.5 rounded-xl text-xs flex items-center justify-center gap-1 shadow transition">
-          📸 儲存小票為圖片
-        </button>
-        <button type="button" onclick="copyReceiptText()" class="w-full bg-orange-500 hover:bg-orange-600 text-white font-bold py-2.5 rounded-xl text-xs flex items-center justify-center gap-1 shadow transition">
-          📋 複製訂單明細 (可直接貼給群主微信)
-        </button>
-        <button type="button" onclick="closeReceiptModal()" class="w-full bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold py-2.5 rounded-xl text-xs transition">
-          Fermer / 完成
-        </button>
-      </div>
-    </div>
-  </div>
-
-  <!-- 5. 📋 新增：歷史訂單彈窗 Modal -->
-  <div id="history-modal" class="hidden fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
-    <div class="bg-white w-full max-w-md rounded-2xl p-5 space-y-4 shadow-2xl max-h-[85vh] flex flex-col">
-      <div class="flex justify-between items-center border-b pb-3 flex-shrink-0">
-        <h3 class="font-bold text-base text-gray-800">Mes Commandes / 我的歷史訂單</h3>
-        <button type="button" onclick="closeHistoryModal()" class="text-gray-400 text-xl font-bold">✕</button>
-      </div>
-      
-      <div id="history-list" class="flex-1 overflow-y-auto space-y-3 pr-1">
-        <!-- JS 動態渲染歷史訂單列表 -->
-      </div>
-
-      <button type="button" onclick="closeHistoryModal()" class="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold py-2.5 rounded-xl text-xs transition flex-shrink-0">
-        Fermer / 關閉
-      </button>
-    </div>
-  </div>
-
-  <!-- 6. 群主後台視圖 (保持原樣) -->
-  <div id="admin-view" class="hidden p-4 space-y-4 max-w-xl mx-auto pb-20 overflow-y-auto h-full">
-    <!-- ... 後台內容保持原樣 ... -->
-  </div>
-
-  <!-- ... 新增/編輯菜品彈窗 Modal 保持原樣 ... -->
-
-  <script src="app.js"></script>
-</body>
-</html>
+        <div class="w-
