@@ -56,14 +56,35 @@
   <!-- 2. 下單彈窗 -->
   <!-- 2. 下单弹窗 -->
 <!-- 2. 下單資訊彈窗 (Checkout Modal) -->
+  <!-- 2. 下单资讯弹窗 (Checkout Modal) -->
   <div id="checkout-modal" class="hidden fixed inset-0 bg-black/60 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
-    <div class="bg-white w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl p-5 space-y-4">
+    <div class="bg-white w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl p-5 space-y-4 max-h-[90vh] overflow-y-auto">
       <div class="flex justify-between items-center border-b pb-3">
         <h3 class="font-bold text-lg text-gray-800">Finaliser la commande / 确认订单</h3>
         <button onclick="closeCheckoutModal()" class="text-gray-400 text-xl font-bold">✕</button>
       </div>
       
       <div class="space-y-3">
+        <!-- 新增：配送日期（必选） -->
+        <div>
+          <label class="block text-xs font-bold text-gray-600 mb-1">Jour de livraison / 配送日期 *</label>
+          <select id="cust-date" class="w-full border border-gray-300 p-2.5 rounded-lg text-sm bg-white focus:outline-none focus:border-green-500 font-bold text-gray-800">
+            <option value="">-- Choisir le jour / 请选择日期 --</option>
+            <option value="Aujourd'hui (当天)">Aujourd'hui / 当天</option>
+            <option value="Demain (明天)">Demain / 明天</option>
+          </select>
+        </div>
+
+        <!-- 新增：配送时段（必选） -->
+        <div>
+          <label class="block text-xs font-bold text-gray-600 mb-1">Créneau horaire / 配送时段 *</label>
+          <select id="cust-time" class="w-full border border-gray-300 p-2.5 rounded-lg text-sm bg-white focus:outline-none focus:border-green-500 font-bold text-gray-800">
+            <option value="">-- Choisir le créneau / 请选择时段 --</option>
+            <option value="Midi (中午)">Midi / 中午</option>
+            <option value="Soir (晚上)">Soir / 晚上</option>
+          </select>
+        </div>
+
         <div>
           <label class="block text-xs font-bold text-gray-600 mb-1">Nom / 姓名或微信昵称 *</label>
           <input id="cust-name" type="text" placeholder="Ex: Jean (Paris)" class="w-full border border-gray-300 p-2.5 rounded-lg text-sm focus:outline-none focus:border-green-500">
@@ -93,46 +114,43 @@
     </div>
   </div>
 
-  <!-- 3. 電子小票彈窗 (Receipt Modal - 下單成功後自動彈出) -->
+  <!-- 3. 电子小票弹窗 (Receipt Modal) -->
   <div id="receipt-modal" class="hidden fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
-    <div class="bg-white w-full max-w-md rounded-2xl p-6 space-y-4 shadow-2xl relative border-t-8 border-green-500 animate-slide-up">
+    <div class="bg-white w-full max-w-md rounded-2xl p-6 space-y-4 shadow-2xl relative border-t-8 border-green-500 animate-slide-up max-h-[90vh] overflow-y-auto">
       
-      <!-- 頂部成功圖示與標題 -->
       <div class="text-center">
         <div class="w-12 h-12 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto text-2xl font-bold mb-2">✓</div>
         <h3 class="text-xl font-extrabold text-gray-800">Commande Confirmée</h3>
-        <p class="text-xs text-gray-500 mt-1">訂單已成功提交！請截圖或複製發給群主</p>
+        <p class="text-xs text-gray-500 mt-1">订单已成功提交！请截图或复制发给群主</p>
       </div>
 
-      <!-- 小票紙張質感卡片 -->
       <div class="bg-gray-50 border border-dashed border-gray-300 p-4 rounded-xl space-y-3 text-xs text-gray-700">
         <div class="flex justify-between border-b pb-2">
-          <span class="font-bold text-gray-500">N° Commande (單號):</span>
+          <span class="font-bold text-gray-500">N° Commande (单号):</span>
           <span id="receipt-id" class="font-mono font-bold text-gray-800">#CC-0001</span>
         </div>
         <div class="space-y-1">
+          <!-- 新增：配送时间小票展示 -->
+          <div class="text-orange-600 font-bold"><strong>Livraison / 配送时间:</strong> <span id="receipt-slot"></span></div>
           <div><strong>Client / 姓名:</strong> <span id="receipt-name"></span></div>
-          <div><strong>Tél / 電話:</strong> <span id="receipt-phone"></span></div>
+          <div><strong>Tél / 电话:</strong> <span id="receipt-phone"></span></div>
           <div><strong>Adresse / 地址:</strong> <span id="receipt-address"></span></div>
         </div>
 
         <div class="border-t pt-2 space-y-1">
-          <div class="font-bold text-gray-600 mb-1">Détail / 餐點明細:</div>
-          <ul id="receipt-items" class="space-y-1 pl-1">
-            <!-- JS 動態寫入餐點內容 -->
-          </ul>
+          <div class="font-bold text-gray-600 mb-1">Détail / 餐点明细:</div>
+          <ul id="receipt-items" class="space-y-1 pl-1"></ul>
         </div>
 
         <div class="border-t pt-2 flex justify-between items-center font-bold text-sm text-gray-900">
-          <span>Total / 總計:</span>
+          <span>Total / 总计:</span>
           <span class="text-base text-green-600"><span id="receipt-total">0.00</span> €</span>
         </div>
       </div>
 
-      <!-- 操作按鈕 -->
       <div class="space-y-2 pt-1">
         <button onclick="copyReceiptText()" class="w-full bg-orange-500 hover:bg-orange-600 text-white font-bold py-2.5 rounded-xl text-xs flex items-center justify-center gap-1 shadow transition">
-          📋 複製訂單明細 (可直接貼給群主微信)
+          📋 复制订单明细 (可直接贴给群主微信)
         </button>
         <button onclick="closeReceiptModal()" class="w-full bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold py-2.5 rounded-xl text-xs transition">
           Fermer / 完成
