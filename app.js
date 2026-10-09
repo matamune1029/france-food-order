@@ -4,39 +4,57 @@ const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 let cart = {};
 let menuData = [];
-let currentCategory = 'ALL';
+let currentCategory = 'Specialite';
 let lastOrderDetails = null;
 
-// 標準分類清單（改用核心關鍵字模糊匹配，杜絕斜槓/空格/中英文格式不符的問題）
+// 1. 標準分類標籤清單（共 7 個側邊欄選項，每日特色放在第一個）
 const fixedCategories = [
-  { key: 'ALL', fr: 'Tout', zh: '全部' },
-  { 
-    key: 'Viandes', 
-    fr: 'Viandes', 
-    zh: '葷菜', 
-    keywords: ['viande', '葷菜'] 
-  },
-  { 
-    key: 'Poissons & Bœuf', 
-    fr: 'Poissons/Bœuf', 
-    zh: '魚/牛肉類', 
-    keywords: ['poisson', 'bœuf', 'boeuf', '魚', '牛'] 
-  },
-  { 
-    key: 'Légumes', 
-    fr: 'Légumes', 
-    zh: '素菜', 
-    keywords: ['légume', 'legume', '素菜'] 
-  },
-  { 
-    key: 'Accompagnements', 
-    fr: 'Riz/Nouilles', 
-    zh: '主食', 
-    keywords: ['accompagnement', 'riz', 'nouille', '主食'] 
-  }
+  { key: 'Specialite', fr: 'Spécialité', zh: '每日特色' },
+  { key: 'Viandes', fr: 'Viandes', zh: '葷菜' },
+  { key: 'Seafood', fr: 'Poissons/Mer', zh: '海鮮類' },
+  { key: 'Beef', fr: 'Bœuf', zh: '牛肉類' },
+  { key: 'Legumes', fr: 'Légumes', zh: '素菜' },
+  { key: 'Staple', fr: 'Riz/Nouilles', zh: '主食' },
+  { key: 'ALL', fr: 'Tout', zh: '全部' }
 ];
 
-// 1. 載入所有菜單
+// 2. 歸一化匹配邏輯（自動識別每日特色、海鮮、牛肉等）
+function normalizeCategory(rawCat, nameZh = '', nameFr = '') {
+  const cat = (rawCat || '').toString().toLowerCase().trim();
+  const zh = (nameZh || '').toString().toLowerCase();
+  const fr = (nameFr || '').toString().toLowerCase();
+
+  // 1. 每日特色
+  if (cat.includes('特色') || cat.includes('每日') || cat.includes('spécialité') || cat.includes('specialite') || cat.includes('special')) {
+    return 'Specialite';
+  }
+
+  // 2. 海鮮類（包含：海鮮、魚、蝦、蟹、poisson、crevette、fruit de mer、酸菜魚等）
+  if (cat.includes('海鮮') || cat.includes('海鲜') || cat.includes('魚') || cat.includes('鱼') || cat.includes('蝦') || cat.includes('虾') || 
+      cat.includes('poisson') || cat.includes('crevette') || cat.includes('mer') || zh.includes('魚') || zh.includes('鱼') || zh.includes('蝦')) {
+    return 'Seafood';
+  }
+
+  // 3. 牛肉類（包含：牛肉、牛、bœuf、boeuf、beef）
+  if (cat.includes('牛肉') || cat.includes('牛') || cat.includes('bœuf') || cat.includes('boeuf') || cat.includes('beef') || zh.includes('牛')) {
+    return 'Beef';
+  }
+
+  // 4. 素菜
+  if (cat.includes('素') || cat.includes('légume') || cat.includes('legume')) {
+    return 'Legumes';
+  }
+
+  // 5. 主食
+  if (cat.includes('主食') || cat.includes('riz') || cat.includes('nouille') || cat.includes('rice') || cat.includes('noodle')) {
+    return 'Staple';
+  }
+
+  // 6. 預設為 葷菜
+  return 'Viandes';
+}
+
+// 3. 載入所有菜單
 async function fetchMenu() {
   try {
     const { data, error } = await supabaseClient.from('menu_items').select('*');
@@ -51,7 +69,7 @@ async function fetchMenu() {
   }
 }
 
-// 2. 渲染左側分類
+// 4. 渲染左側分類
 function renderCategoryBar() {
   const categoryContainer = document.getElementById('category-bar');
   if (!categoryContainer) return;
@@ -74,36 +92,18 @@ function switchCategory(catKey) {
   renderMenu();
 }
 
-// 判斷菜品屬於哪個標準大類的通用的輔助函數
-function matchCategoryKey(itemCategory) {
-  const catStr = (itemCategory || '').toLowerCase();
-  
-  // 優先匹配 魚/牛肉類
-  if (catStr.includes('魚') || catStr.includes('牛') || catStr.includes('poisson') || catStr.includes('bœuf') || catStr.includes('boeuf')) {
-    return 'Poissons & Bœuf';
-  }
-  // 素菜
-  if (catStr.includes('素') || catStr.includes('légume') || catStr.includes('legume')) {
-    return 'Légumes';
-  }
-  // 主食
-  if (catStr.includes('主食') || catStr.includes('riz') || catStr.includes('nouille') || catStr.includes('accompagnement')) {
-    return 'Accompagnements';
-  }
-  // 預設皆歸為 葷菜
-  return 'Viandes';
-}
-
-// 3. 渲染前台菜單列表（完全修復酸菜魚與魚/牛肉類顯示不出的 Bug）
+// 5. 渲染前台菜單列表
 function renderMenu() {
   const container = document.getElementById('menu-container');
   if (!container) return;
 
   const categoryPriority = {
-    'Viandes': 1,
-    'Poissons & Bœuf': 2,
-    'Légumes': 3,
-    'Accompagnements': 4
+    'Specialite': 1,
+    'Viandes': 2,
+    'Seafood': 3,
+    'Beef': 4,
+    'Legumes': 5,
+    'Staple': 6
   };
 
   let listToDisplay = [];
@@ -112,13 +112,10 @@ function renderMenu() {
     // 【Tout 全部】分類：隱藏已下架菜品
     listToDisplay = menuData.filter(i => i.is_available !== false);
 
-    // 先按大類順序排序，同類內部按 sort_order 升序
+    // 按大類順序（特色 -> 葷菜 -> 海鮮 -> 牛肉 -> 素菜 -> 主食），再按 sort_order 升序
     listToDisplay.sort((a, b) => {
-      const catAKey = matchCategoryKey(a.category);
-      const catBKey = matchCategoryKey(b.category);
-      
-      const priorityA = categoryPriority[catAKey] || 99;
-      const priorityB = categoryPriority[catBKey] || 99;
+      const priorityA = categoryPriority[normalizeCategory(a.category, a.name_zh, a.name_fr)] || 99;
+      const priorityB = categoryPriority[normalizeCategory(b.category, b.name_zh, b.name_fr)] || 99;
 
       if (priorityA !== priorityB) {
         return priorityA - priorityB;
@@ -127,12 +124,12 @@ function renderMenu() {
     });
 
   } else {
-    // 【單一分類】：透過關鍵字比對過濾
+    // 【單一分類】：依據歸一化分類篩選
     listToDisplay = menuData.filter(i => {
-      return matchCategoryKey(i.category) === currentCategory;
+      return normalizeCategory(i.category, i.name_zh, i.name_fr) === currentCategory;
     });
 
-    // 排序：上架在上，下架自動沉底；同狀態按 sort_order 升序
+    // 排序：上架在上，下架沉底；同狀態按 sort_order 升序
     listToDisplay.sort((a, b) => {
       const availA = a.is_available !== false ? 1 : 0;
       const availB = b.is_available !== false ? 1 : 0;
@@ -178,7 +175,7 @@ function renderMenu() {
   }).join('');
 }
 
-// 4. 更新購物車
+// 6. 更新購物車
 function updateCart(id, delta) {
   cart[id] = (cart[id] || 0) + delta;
   if (cart[id] <= 0) delete cart[id];
@@ -206,7 +203,7 @@ function updateCart(id, delta) {
   }
 }
 
-// 5. 彈窗控制
+// 7. 彈窗與結算邏輯
 function openCheckoutModal() {
   if (Object.keys(cart).length === 0) return alert('Votre panier est vide ! / 購物車是空的！');
   document.getElementById('checkout-modal').classList.remove('hidden');
@@ -216,7 +213,6 @@ function closeCheckoutModal() {
   document.getElementById('checkout-modal').classList.add('hidden');
 }
 
-// 6. 提交訂單
 async function submitOrder() {
   try {
     const dateSelect = document.getElementById('cust-date').value;
@@ -277,7 +273,6 @@ async function submitOrder() {
   }
 }
 
-// 7. 電子小票彈窗
 function showReceiptModal(order) {
   document.getElementById('receipt-id').innerText = '#' + order.orderId;
   document.getElementById('receipt-slot').innerText = order.deliverySlot;
@@ -315,20 +310,14 @@ function closeReceiptModal() {
   renderMenu();
 }
 
-// ----------------------------------------------------
-// 🔐 暗號連擊 + 密碼驗證邏輯
-// ----------------------------------------------------
-
+// 8. 後台管理與暗號
 let secretClickCount = 0;
 let secretClickTimer = null;
 
 function handleSecretClick() {
   secretClickCount++;
   clearTimeout(secretClickTimer);
-  
-  secretClickTimer = setTimeout(() => {
-    secretClickCount = 0;
-  }, 3000);
+  secretClickTimer = setTimeout(() => { secretClickCount = 0; }, 3000);
 
   if (secretClickCount >= 5) {
     secretClickCount = 0;
@@ -357,11 +346,6 @@ function toggleMode(forceCheck = false) {
 
   if (!adminView.classList.contains('hidden')) {
     fetchOrders();
-    supabaseClient.channel('public:orders')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'orders' }, payload => {
-        alert('🔔 Nouvelle commande reçue ! / 收到新訂單！');
-        fetchOrders();
-      }).subscribe();
   }
 }
 
@@ -372,10 +356,6 @@ function checkUrlAdminParam() {
     if (btn) btn.classList.remove('hidden');
   }
 }
-
-// ----------------------------------------------------
-// 🛠️ 群主後台 Tab 切換與菜單管理邏輯
-// ----------------------------------------------------
 
 function switchAdminTab(tab) {
   const ordersTab = document.getElementById('admin-orders-tab');
@@ -424,7 +404,6 @@ async function fetchOrders() {
   `).join('');
 }
 
-// 渲染後台菜單列表
 async function fetchAdminMenu() {
   const container = document.getElementById('admin-menu-list');
   if (!container) return;
@@ -439,7 +418,6 @@ async function fetchAdminMenu() {
     return;
   }
 
-  // 按 sort_order 升序
   menuData.sort((a, b) => (a.sort_order || 99) - (b.sort_order || 99));
 
   container.innerHTML = menuData.map(item => {
@@ -487,8 +465,7 @@ async function toggleDishAvailability(event, id, newStatus) {
 function openDishModal(id = null) {
   const modal = document.getElementById('dish-modal');
   const title = document.getElementById('dish-modal-title');
-  if (!modal) return;
-  
+  if (!modal) return;  
   const sortInput = document.getElementById('dish-sort');
 
   if (id) {
@@ -500,7 +477,18 @@ function openDishModal(id = null) {
     document.getElementById('dish-name-zh').value = item.name_zh || '';
     document.getElementById('dish-price').value = item.price || '';
     if (sortInput) sortInput.value = item.sort_order || 1;
-    document.getElementById('dish-category').value = item.category || '葷菜';
+    
+    // 下拉選單匹配
+    const normKey = normalizeCategory(item.category, item.name_zh, item.name_fr);
+    const catSelect = document.getElementById('dish-category');
+    if (catSelect) {
+      if (normKey === 'Specialite') catSelect.value = '每日特色';
+      else if (normKey === 'Seafood') catSelect.value = '海鮮類';
+      else if (normKey === 'Beef') catSelect.value = '牛肉類';
+      else if (normKey === 'Legumes') catSelect.value = '素菜';
+      else if (normKey === 'Staple') catSelect.value = '主食';
+      else catSelect.value = '葷菜';
+    }
   } else {
     title.innerText = 'Ajouter un plat / 新增菜品';
     document.getElementById('dish-id').value = '';
@@ -508,7 +496,7 @@ function openDishModal(id = null) {
     document.getElementById('dish-name-zh').value = '';
     document.getElementById('dish-price').value = '';
     if (sortInput) sortInput.value = '1';
-    document.getElementById('dish-category').value = '葷菜';
+    document.getElementById('dish-category').value = '每日特色';
   }
   modal.classList.remove('hidden');
 }
