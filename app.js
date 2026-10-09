@@ -23,7 +23,7 @@ const categoryMap = {
   'Accompagnements / 主食': { fr: 'Riz/Nouilles', zh: '主食' }
 };
 
-// 1. 载入所有菜单（不进行 is_available 过滤，由前端渲染逻辑控制状态）
+// 1. 載入菜單（拉取所有菜品，不加 is_available 限制）
 async function fetchMenu() {
   try {
     const { data, error } = await supabaseClient.from('menu_items').select('*').order('created_at', { ascending: false });
@@ -39,7 +39,7 @@ async function fetchMenu() {
   }
 }
 
-// 2. 渲染左侧分类
+// 2. 渲染左側分類
 function renderCategoryBar() {
   const rawCategories = ['ALL', ...new Set(menuData.map(i => i.category || 'Viandes'))];
   const categoryContainer = document.getElementById('category-bar');
@@ -64,7 +64,7 @@ function switchCategory(cat) {
   renderMenu();
 }
 
-// 3. 渲染前台菜单列表（下架菜品变灰禁用，不直接隐藏）
+// 3. 渲染前台菜單列表（下架菜品變灰，顯示「已售罄」且禁用加號按鈕）
 function renderMenu() {
   const container = document.getElementById('menu-container');
   if (!container) return;
@@ -79,7 +79,7 @@ function renderMenu() {
   }
 
   container.innerHTML = filtered.map(item => {
-    const isAvailable = item.is_available !== false; // 默认未设定的按 true 处理
+    const isAvailable = item.is_available !== false;
 
     return `
       <div class="bg-white p-3 rounded-xl shadow-sm flex justify-between items-center border border-gray-100 ${!isAvailable ? 'opacity-50 grayscale' : ''}">
@@ -107,7 +107,7 @@ function renderMenu() {
   }).join('');
 }
 
-// 4. 更新购物车
+// 4. 更新購物車
 function updateCart(id, delta) {
   cart[id] = (cart[id] || 0) + delta;
   if (cart[id] <= 0) delete cart[id];
@@ -135,7 +135,7 @@ function updateCart(id, delta) {
   }
 }
 
-// 5. 弹窗控制
+// 5. 彈窗控制
 function openCheckoutModal() {
   if (Object.keys(cart).length === 0) return alert('Votre panier est vide ! / 购物车是空的！');
   document.getElementById('checkout-modal').classList.remove('hidden');
@@ -145,7 +145,7 @@ function closeCheckoutModal() {
   document.getElementById('checkout-modal').classList.add('hidden');
 }
 
-// 6. 提交订单
+// 6. 提交訂單
 async function submitOrder() {
   try {
     const dateSelect = document.getElementById('cust-date').value;
@@ -206,7 +206,7 @@ async function submitOrder() {
   }
 }
 
-// 7. 电子小票弹窗
+// 7. 電子小票彈窗
 function showReceiptModal(order) {
   document.getElementById('receipt-id').innerText = '#' + order.orderId;
   document.getElementById('receipt-slot').innerText = order.deliverySlot;
@@ -245,7 +245,7 @@ function closeReceiptModal() {
 }
 
 // ----------------------------------------------------
-// 🔐 暗号连击 + 密码双重验证逻辑
+// 🔐 暗號連擊 + 密碼雙重驗證邏輯
 // ----------------------------------------------------
 
 let secretClickCount = 0;
@@ -267,10 +267,8 @@ function handleSecretClick() {
   }
 }
 
-// 全局登录状态标记（预设未登录）
 let isAdminLoggedIn = false;
 
-// 后台切换（只需验证一次密码）
 function toggleMode(forceCheck = false) {
   const adminView = document.getElementById('admin-view');
   const customerView = document.getElementById('customer-view');
@@ -306,7 +304,7 @@ function checkUrlAdminParam() {
 }
 
 // ----------------------------------------------------
-// 🛠️ 群主后台 Tab 切换与菜单管理逻辑
+// 🛠️ 群主後台 Tab 切換與菜單管理邏輯
 // ----------------------------------------------------
 
 function switchAdminTab(tab) {
@@ -356,7 +354,7 @@ async function fetchOrders() {
   `).join('');
 }
 
-// 渲染后台菜单列表（阻止默认跳转、安全保存列表项）
+// 渲染後台菜單（直接共享前台 fetchMenu 拿到的 menuData）
 async function fetchAdminMenu() {
   const container = document.getElementById('admin-menu-list');
   if (!container) return;
@@ -380,7 +378,7 @@ async function fetchAdminMenu() {
           <div class="text-green-600 font-extrabold text-xs mt-0.5">${item.price} € <span class="text-gray-400 font-normal">| ${item.category || 'Viandes'}</span></div>
         </div>
         <div class="flex items-center gap-2">
-          <!-- 上/下架按钮：显式 type="button"，阻止冒泡与页面重载 -->
+          <!-- 加上 type="button" 與 event.stopPropagation() 防止頁面刷新/跳轉 -->
           <button type="button" onclick="toggleDishAvailability(event, '${item.id}', ${!isAvailable})" class="px-2.5 py-1 rounded text-[10px] font-bold transition ${isAvailable ? 'bg-green-100 text-green-700 hover:bg-green-200' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}">
             ${isAvailable ? 'En vente / 上架中' : 'Masqué / 已下架'}
           </button>
@@ -393,19 +391,17 @@ async function fetchAdminMenu() {
   }).join('');
 }
 
-// 上下架状态无刷新切换
+// 無刷新切換上下架
 async function toggleDishAvailability(event, id, newStatus) {
-  if (event) event.stopPropagation(); // 阻止事件冒泡防止引发页面跳转或提交
+  if (event) event.stopPropagation();
   
   const { error } = await supabaseClient.from('menu_items').update({ is_available: newStatus }).eq('id', id);
   if (error) {
     alert('修改状态失败: ' + error.message);
   } else {
-    // 局部更新变量
     const target = menuData.find(m => m.id === id);
     if (target) target.is_available = newStatus;
 
-    // 重新渲染后台与前台界面（不刷新页面）
     fetchAdminMenu();
     renderMenu();
   }
@@ -417,61 +413,4 @@ function openDishModal(id = null) {
   if (!modal) return;
   
   if (id) {
-    const item = menuData.find(m => m.id === id);
-    if (!item) return;
-    title.innerText = 'Modifier le plat / 编辑菜品';
-    document.getElementById('dish-id').value = item.id;
-    document.getElementById('dish-name-fr').value = item.name_fr;
-    document.getElementById('dish-name-zh').value = item.name_zh;
-    document.getElementById('dish-price').value = item.price;
-    document.getElementById('dish-category').value = item.category || 'Viandes';
-  } else {
-    title.innerText = 'Ajouter un plat / 新增菜品';
-    document.getElementById('dish-id').value = '';
-    document.getElementById('dish-name-fr').value = '';
-    document.getElementById('dish-name-zh').value = '';
-    document.getElementById('dish-price').value = '';
-    document.getElementById('dish-category').value = 'Viandes';
-  }
-  modal.classList.remove('hidden');
-}
-
-function closeDishModal() {
-  const modal = document.getElementById('dish-modal');
-  if (modal) modal.classList.add('hidden');
-}
-
-async function saveDish() {
-  const id = document.getElementById('dish-id').value;
-  const name_fr = document.getElementById('dish-name-fr').value.trim();
-  const name_zh = document.getElementById('dish-name-zh').value.trim();
-  const price = parseFloat(document.getElementById('dish-price').value);
-  const category = document.getElementById('dish-category').value;
-
-  if (!name_fr || !name_zh || isNaN(price)) {
-    return alert('Veuillez remplir tous les champs / 请完整填写名称与价格！');
-  }
-
-  const payload = { name_fr, name_zh, price, category, is_available: true };
-
-  let res;
-  if (id) {
-    res = await supabaseClient.from('menu_items').update(payload).eq('id', id);
-  } else {
-    res = await supabaseClient.from('menu_items').insert([payload]);
-  }
-
-  if (res.error) {
-    alert('保存失败: ' + res.error.message);
-  } else {
-    closeDishModal();
-    // 重新拉取最新列表
-    const { data } = await supabaseClient.from('menu_items').select('*').order('created_at', { ascending: false });
-    if (data) menuData = data;
-    fetchAdminMenu();
-    renderMenu();
-  }
-}
-
-// 初始化启动
-fetchMenu();
+    const item = menu
