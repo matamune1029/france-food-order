@@ -157,7 +157,7 @@
   </div>
 
   <!-- 5. 群主後台視圖 (Admin View) -->
-  <div id="admin-view" class="hidden p-4 space-y-4 max-w-lg mx-auto pb-20 overflow-y-auto h-full">
+  <div id="admin-view" class="hidden p-4 space-y-4 max-w-xl mx-auto pb-20 overflow-y-auto h-full">
     <div class="flex justify-between items-center bg-white p-3 rounded-xl shadow-sm border">
       <h2 class="font-bold text-gray-800 text-base">🚨 Commandes & Menu / 群主後台</h2>
       <button type="button" onclick="toggleMode()" class="bg-gray-100 text-gray-600 text-xs px-3 py-1.5 rounded-lg font-bold">
@@ -175,8 +175,40 @@
       </button>
     </div>
 
-    <!-- TAB 1: 訂單列表 -->
+    <!-- TAB 1: 訂單管理 -->
     <div id="admin-orders-tab" class="space-y-3">
+      <!-- 1. 營業額與訂單數對帳卡片 -->
+      <div class="grid grid-cols-2 gap-2 text-center">
+        <div class="bg-gradient-to-br from-green-500 to-emerald-600 text-white p-2.5 rounded-xl shadow-sm">
+          <div class="text-[10px] opacity-80">Chiffre d'affaires / 篩選營收</div>
+          <div class="text-lg font-black mt-0.5"><span id="stat-total-money">0.00</span> €</div>
+        </div>
+        <div class="bg-gradient-to-br from-orange-500 to-amber-600 text-white p-2.5 rounded-xl shadow-sm">
+          <div class="text-[10px] opacity-80">Total Commandes / 訂單筆數</div>
+          <div class="text-lg font-black mt-0.5"><span id="stat-order-count">0</span> 筆</div>
+        </div>
+      </div>
+
+      <!-- 2. 日期快捷切頁 (Tabs) -->
+      <div class="flex bg-gray-100 p-1 rounded-xl text-[11px] font-bold border border-gray-200">
+        <button type="button" id="order-filter-all" onclick="filterOrderTab('all')" class="flex-1 py-1.5 rounded-lg bg-white text-green-700 shadow-sm transition">
+          全部 (Toutes)
+        </button>
+        <button type="button" id="order-filter-today" onclick="filterOrderTab('today')" class="flex-1 py-1.5 rounded-lg text-gray-500 transition">
+          今天 (Aujourd'hui)
+        </button>
+        <button type="button" id="order-filter-tomorrow" onclick="filterOrderTab('tomorrow')" class="flex-1 py-1.5 rounded-lg text-gray-500 transition">
+          明天 (Demain)
+        </button>
+      </div>
+
+      <!-- 3. 搜尋欄与日期選擇 -->
+      <div class="flex gap-2">
+        <input type="text" id="order-search-input" oninput="applyOrderFilters()" placeholder="🔍 搜尋姓名、電話、地址..." class="flex-1 border p-2 rounded-xl text-xs focus:outline-none focus:border-orange-500 bg-white">
+        <input type="date" id="order-date-picker" onchange="applyOrderFilters()" class="border p-2 rounded-xl text-xs bg-white text-gray-600">
+      </div>
+
+      <!-- 4. 訂單列表 -->
       <div id="order-list" class="space-y-3">
         <div class="text-gray-400 text-xs text-center py-4">Chargement / 加載中...</div>
       </div>
@@ -193,7 +225,7 @@
     </div>
   </div>
 
-  <!-- 6. 新增/編輯菜品彈窗 Modal (新增圖片上傳與網址輸入) -->
+  <!-- 6. 新增/編輯菜品彈窗 Modal -->
   <div id="dish-modal" class="hidden fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
     <div class="bg-white w-full max-w-md rounded-2xl p-5 space-y-3 shadow-2xl max-h-[90vh] overflow-y-auto">
       <div class="flex justify-between items-center border-b pb-2">
