@@ -350,14 +350,22 @@ function switchAdminTab(tab) {
 }
 
 async function fetchOrders() {
-  const { data } = await supabaseClient.from('orders').select('*');
+  const { data, error } = await supabaseClient.from('orders').select('*').order('created_at', { ascending: false });
+  
+  if (error) {
+    console.error('读取订单失败 Error:', error);
+    alert('读取订单失败: ' + error.message); // 如果是 RLS 权限问题，这里会直接弹窗报错提示
+    return;
+  }
+
   const container = document.getElementById('order-list');
   if (!container) return;
 
   if (!data || data.length === 0) {
-    container.innerHTML = '<div class="text-gray-400">Aucune commande / 暫無訂單</div>';
+    container.innerHTML = '<div class="text-gray-400 text-xs text-center py-4">Aucune commande / 暂无订单</div>';
     return;
   }
+
   container.innerHTML = data.map(o => `
     <div class="bg-white p-3.5 rounded-xl border-l-4 border-orange-500 shadow-sm space-y-2">
       <div class="flex justify-between font-bold text-gray-800">
@@ -365,7 +373,7 @@ async function fetchOrders() {
         <span class="text-green-600 text-lg">${o.total_price} €</span>
       </div>
       <div class="text-xs font-bold text-orange-600 bg-orange-50 p-1.5 rounded border border-orange-100">
-        📍 配送與聯繫資訊: ${o.phone || 'N/A'}
+        📍 配送与联系资讯: ${o.phone || 'N/A'}
       </div>
       <div class="text-[10px] text-gray-400">${o.created_at ? new Date(o.created_at).toLocaleString() : ''}</div>
       <ul class="text-xs bg-gray-50 p-2.5 rounded-lg border space-y-1">
