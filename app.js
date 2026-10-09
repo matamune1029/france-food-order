@@ -31,8 +31,6 @@ async function fetchMenu() {
     menuData = data || [];
     renderCategoryBar();
     renderMenu();
-    
-    // 菜单加载完毕后，再检查 URL 参数暗号
     checkUrlAdminParam();
   } catch (err) {
     console.error('Fetch Menu Failure:', err);
@@ -135,16 +133,22 @@ function closeCheckoutModal() {
   document.getElementById('checkout-modal').classList.add('hidden');
 }
 
-// 6. 提交订单
+// 6. 提交订单（包含日期与时段强校验）
 async function submitOrder() {
   try {
+    const dateSelect = document.getElementById('cust-date').value;
+    const timeSelect = document.getElementById('cust-time').value;
     const name = document.getElementById('cust-name').value.trim();
     const phone = document.getElementById('cust-phone').value.trim();
     const address = document.getElementById('cust-address').value.trim();
     const note = document.getElementById('cust-note').value.trim();
 
+    // 1. 必选校验
+    if (!dateSelect) return alert('Veuillez choisir le jour de livraison ! / 请选择配送日期！');
+    if (!timeSelect) return alert('Veuillez choisir le créneau horaire ! / 请选择配送时段！');
     if (!name) return alert('Veuillez entrer votre nom ! / 请填写姓名！');
 
+    // 2. 手机号校验
     const cleanPhone = phone.replace(/[\s\.\-\(\)]/g, '');
     const frPhoneRegex = /^(?:(?:\+33|0033)[1-9]|0[1-9])\d{8}$/;
     if (!frPhoneRegex.test(cleanPhone)) {
@@ -165,8 +169,10 @@ async function submitOrder() {
     
     const total = parseFloat(document.getElementById('total-price').innerText);
     const orderId = 'CC-' + Date.now().toString().slice(-6);
+    const deliverySlot = `${dateSelect} - ${timeSelect}`;
 
-    const fullContactInfo = `${phone} | Adresse: ${address}${note ? ' | Note: ' + note : ''}`;
+    // 将日期、时段、电话、地址、备注统一拼接入数据库 contact 字段
+    const fullContactInfo = `[${deliverySlot}] ${phone} | Adresse: ${address}${note ? ' | Note: ' + note : ''}`;
     const dbItems = items.map(i => ({ name: `${i.name_fr} (${i.name_zh})`, qty: i.qty, price: i.price }));
 
     const { error } = await supabaseClient.from('orders').insert([
@@ -179,7 +185,8 @@ async function submitOrder() {
       return;
     }
 
-    lastOrderDetails = { orderId, name, phone, address, note, items, total };
+    // 保存详细订单信息供电子小票展示
+    lastOrderDetails = { orderId, deliverySlot, name, phone, address, note, items, total };
 
     cart = {};
     closeCheckoutModal();
@@ -191,9 +198,10 @@ async function submitOrder() {
   }
 }
 
-// 7. 电子小票弹窗
+// 7. 电子小票弹窗渲染
 function showReceiptModal(order) {
   document.getElementById('receipt-id').innerText = '#' + order.orderId;
+  document.getElementById('receipt-slot').innerText = order.deliverySlot;
   document.getElementById('receipt-name').innerText = order.name;
   document.getElementById('receipt-phone').innerText = order.phone;
   document.getElementById('receipt-address').innerText = order.address;
@@ -210,11 +218,12 @@ function showReceiptModal(order) {
   document.getElementById('receipt-modal').classList.remove('hidden');
 }
 
+// 复制小票文本
 function copyReceiptText() {
   if (!lastOrderDetails) return;
   const o = lastOrderDetails;
   const itemText = o.items.map(i => `- ${i.name_fr} (${i.name_zh}) x${i.qty}`).join('\n');
-  const text = `🧾 【Cici Cuisine 订单凭证 #${o.orderId}】\n👤 姓名: ${o.name}\n📞 电话: ${o.phone}\n📍 地址: ${o.address}\n\n🍲 订购餐点:\n${itemText}\n\n💰 总计: ${o.total.toFixed(2)} €`;
+  const text = `🧾 【Cici Cuisine 订单凭证 #${o.orderId}】\n📅 配送时间: ${o.deliverySlot}\n👤 姓名: ${o.name}\n📞 电话: ${o.phone}\n📍 地址: ${o.address}\n\n🍲 订购餐点:\n${itemText}\n\n💰 总计: ${o.total.toFixed(2)} €`;
 
   navigator.clipboard.writeText(text).then(() => {
     alert('📋 订单明细已复制到剪贴板！可以直接发送给群主微信。');
@@ -235,7 +244,6 @@ function closeReceiptModal() {
 let secretClickCount = 0;
 let secretClickTimer = null;
 
-// 点击标题 5 次触发暗号
 function handleSecretClick() {
   secretClickCount++;
   clearTimeout(secretClickTimer);
@@ -252,7 +260,6 @@ function handleSecretClick() {
   }
 }
 
-// 后台切换（带密码验证）
 function toggleMode(forceCheck = false) {
   const adminView = document.getElementById('admin-view');
   const customerView = document.getElementById('customer-view');
@@ -277,7 +284,6 @@ function toggleMode(forceCheck = false) {
   }
 }
 
-// 检测 URL 中的 ?admin=true 参数
 function checkUrlAdminParam() {
   const urlParams = new URLSearchParams(window.location.search);
   if (urlParams.get('admin') === 'true') {
@@ -287,7 +293,7 @@ function checkUrlAdminParam() {
   }
 }
 
-// 获取后台订单列表
+// 后台订单展示（高亮突出显示配送时间）
 async function fetchOrders() {
   const { data } = await supabaseClient.from('orders').select('*').order('created_at', { ascending: false });
   const container = document.getElementById('order-list');
@@ -303,7 +309,9 @@ async function fetchOrders() {
         <span>👤 ${o.customer_name}</span>
         <span class="text-green-600 text-lg">${o.total_price} €</span>
       </div>
-      <div class="text-xs text-gray-600">📞 ${o.phone || 'N/A'}</div>
+      <div class="text-xs font-bold text-orange-600 bg-orange-50 p-1.5 rounded border border-orange-100">
+        📍 配送与联系信息: ${o.phone || 'N/A'}
+      </div>
       <div class="text-[10px] text-gray-400">${new Date(o.created_at).toLocaleString()}</div>
       <ul class="text-xs bg-gray-50 p-2.5 rounded-lg border space-y-1">
         ${o.items.map(i => `<li class="flex justify-between"><span>${i.name}</span><span class="font-bold">x${i.qty}</span></li>`).join('')}
@@ -312,5 +320,4 @@ async function fetchOrders() {
   `).join('');
 }
 
-// 页面加载入口
 fetchMenu();
