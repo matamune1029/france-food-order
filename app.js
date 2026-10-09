@@ -454,13 +454,14 @@ async function saveDish() {
   }
 
   if (res.error) {
-    alert('保存失败: ' + res.error.message);
+    alert('❌ 保存失败 / Erreur: ' + res.error.message);
+    console.error('Save error:', res.error);
   } else {
+    alert('✅ 保存成功！');
     closeDishModal();
-    const { data } = await supabaseClient.from('menu_items').select('*').order('created_at', { ascending: false });
-    if (data) menuData = data;
+    // 重新从数据库完整拉取一次最新菜品
+    await fetchMenu();
     fetchAdminMenu();
-    renderMenu();
   }
 }
 
