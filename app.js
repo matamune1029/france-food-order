@@ -1031,33 +1031,33 @@ function closeDishDetailModal() {
 }
 
 
-// 🌟 永久刪除 Supabase 中的已取消訂單（支援自動類型轉換）
+// 🌟 打印訂單完整結構並嘗試刪除
 async function deleteOrderFromSupabase(orderId, customerName) {
-  const confirmDelete = confirm(`⚠️ Supprimer définitivement la commande de "${customerName}" ?\n\n確定要永久刪除來自「${customerName}」的這筆訂單嗎？刪除後無法恢復！`);
+  const confirmDelete = confirm(`⚠️ Supprimer définitivement la commande de "${customerName}" ?\n\n確定要永久刪除來自「${customerName}」的這筆訂單嗎？`);
   
   if (!confirmDelete) return;
 
-  // 自動判斷：如果 ID 全是數字，則轉換為數字型態，否則保持字串
-  const formattedId = /^\d+$/.test(orderId) ? Number(orderId) : orderId;
-
-  console.log("正在嘗試刪除訂單 ID:", formattedId, "原始類型:", typeof orderId);
+  // 在 console 中印出當前 rawOrders 裡對應的那筆完整訂單數據
+  const targetOrder = rawOrders.find(o => o.id == orderId);
+  console.log("👉 點擊刪除的完整訂單資料物件：", targetOrder);
+  console.log("👉 傳入的 orderId 數值與類型:", orderId, typeof orderId);
 
   try {
+    // 嘗試直接用 rawOrders 裡抓到的 id 刪除
     const { data, error } = await supabaseClient
       .from('orders')
       .delete()
-      .eq('id', formattedId)
+      .eq('id', orderId)
       .select();
 
     if (error) {
       console.error('Supabase 刪除報錯:', error);
       alert('❌ 刪除失敗: ' + error.message);
     } else if (!data || data.length === 0) {
-      console.warn('資料庫未找到該訂單');
-      alert('⚠️ 刪除失敗：資料庫中未找到該 ID 的訂單。');
+      alert('⚠️ 刪除失敗：請按 F12 打開 Console 查看印出的訂單資料結構。');
     } else {
       alert('✅ 訂單已成功永久刪除！');
-      fetchOrders(); // 重新載入後台訂單列表
+      fetchOrders();
     }
   } catch (err) {
     console.error('刪除過程發生異常:', err);
