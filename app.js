@@ -122,18 +122,22 @@ function renderMenu() {
 
     return `
       <div class="bg-white p-3 rounded-xl shadow-sm flex items-center gap-3 border border-gray-100 ${!isAvailable ? 'opacity-50 grayscale' : ''}">
-        ${imgHtml}
+        <!-- 1. 圖片加上 onclick 和 cursor-pointer -->
+        <div onclick="openDishDetailModal('${item.id}')" class="cursor-pointer flex-shrink-0">
+          ${imgHtml}
+        </div>
+        
         <div class="flex-1 min-w-0">
-          <div class="font-bold text-gray-800 text-xs sm:text-sm leading-tight line-clamp-2 break-words">
-            ${item.name_fr || ''}
-            ${!isAvailable ? '<span class="ml-1 text-[10px] bg-gray-200 text-gray-600 px-1 py-0.5 rounded font-normal inline-block">Épuisé</span>' : ''}
+          <!-- 2. 法文菜名加上 onclick、cursor-pointer 與 hover 變色效果 -->
+          <div onclick="openDishDetailModal('${item.id}')" class="font-bold text-gray-800 text-xs sm:text-sm leading-tight line-clamp-2 break-words cursor-pointer hover:text-green-600 transition">
+            ${item.name_fr \vert{}\vert{} ''}${!isAvailable ? '<span class="ml-1 text-[10px] bg-gray-200 text-gray-600 px-1 py-0.5 rounded font-normal inline-block">Épuisé</span>' : ''}
           </div>
           <div class="text-xs text-gray-500 font-normal mt-0.5 truncate">${item.name_zh || ''}</div>
           <div class="flex items-center gap-2 mt-1">
-            <span class="text-green-600 font-extrabold text-base">${item.price || 0} €</span>
-            ${isAvailable ? `<span class="text-[10px] text-orange-600 bg-orange-50 px-1.5 py-0.5 rounded border border-orange-100">Stock: ${maxStock}</span>` : ''}
+            <span class="text-green-600 font-extrabold text-base">${item.price \vert{}\vert{} 0} €</span>${isAvailable ? `<span class="text-[10px] text-orange-600 bg-orange-50 px-1.5 py-0.5 rounded border border-orange-100">Stock: ${maxStock}</span>` : ''}
           </div>
         </div>
+        
         <div class="flex items-center gap-1.5 flex-shrink-0">
           ${currentCartQty > 0 ? `
             <button type="button" onclick="updateCart('${item.id}', -1)" class="w-7 h-7 bg-gray-100 text-gray-700 rounded-full font-bold flex items-center justify-center active:scale-90">-</button>
@@ -959,3 +963,57 @@ window.addEventListener('DOMContentLoaded', () => {
   fetchMenu();
   checkUrlAdminParam();
 });
+
+// 🌟 打開菜品詳情大圖彈窗
+function openDishDetailModal(id) {
+  const item = menuData.find(i => i.id === id);
+  if (!item) return;
+
+  const modal = document.getElementById('dish-detail-modal');
+  const imgContainer = document.getElementById('detail-modal-img-container');
+  const nameFr = document.getElementById('detail-modal-name-fr');
+  const nameZh = document.getElementById('detail-modal-name-zh');
+  const priceElem = document.getElementById('detail-modal-price');
+  const stockElem = document.getElementById('detail-modal-stock');
+  const addBtn = document.getElementById('detail-modal-add-btn');
+
+  // 渲染圖片
+  if (item.image_url) {
+    imgContainer.innerHTML = `<img src="${item.image_url}" class="w-full h-full object-cover">`;
+  } else {
+    imgContainer.innerHTML = `<div class="text-4xl text-orange-400 font-bold">🍲</div>`;
+  }
+
+  // 渲染文字與價格
+  nameFr.innerText = item.name_fr || '';
+  nameZh.innerText = item.name_zh || '';
+  priceElem.innerText = (item.price || 0).toFixed(2) + ' €';
+  
+  const maxStock = (typeof item.stock === 'number') ? item.stock : 99;
+  const isAvailable = (item.is_available !== false) && (maxStock > 0);
+
+  stockElem.innerText = `Stock: ${maxStock}`;
+
+  // 綁定彈窗內的加入購物車按鈕
+  if (isAvailable) {
+    addBtn.disabled = false;
+    addBtn.className = "w-full bg-green-500 hover:bg-green-600 text-white font-bold py-3 rounded-xl text-sm shadow transition active:scale-95";
+    addBtn.innerText = "Ajouter au panier / 加入購物車 🛒";
+    addBtn.onclick = () => {
+      updateCart(item.id, 1);
+      closeDishDetailModal();
+    };
+  } else {
+    addBtn.disabled = true;
+    addBtn.className = "w-full bg-gray-300 text-gray-500 font-bold py-3 rounded-xl text-sm cursor-not-allowed";
+    addBtn.innerText = "Épuisé / 已售罄";
+  }
+
+  modal.classList.remove('hidden');
+}
+
+// 關閉菜品詳情彈窗
+function closeDishDetailModal() {
+  const modal = document.getElementById('dish-detail-modal');
+  if (modal) modal.classList.add('hidden');
+}
