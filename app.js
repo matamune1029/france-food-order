@@ -288,6 +288,12 @@ async function submitOrder() {
     // 取得 Supabase 該筆資料真實的 ID (UUID 或數字)
     const realDbId = data[0].id;
 
+    // 🌟 在這裡加上 dbId: realDbId
+    lastOrderDetails = { dbId: realDbId, orderId, deliverySlot, name, phone, address, note, items, total };
+
+    // 保存至本地歷史訂單
+    saveOrderToLocal(lastOrderDetails);
+
     // 自動扣減庫存
     for (let cartItem of items) {
       const targetDish = menuData.find(m => m.id === cartItem.id);
@@ -469,8 +475,8 @@ function openHistoryModal() {
           <div class="flex justify-between items-center pt-1 font-bold border-t border-gray-100">
             <span class="text-gray-500">總計: <span class="text-green-600 text-sm">${(o.total || 0).toFixed(2)} €</span></span>
             
-            <!-- 🌟 增加的 WhatsApp 補救按鈕 -->
-            <a href="${whatsappUrl}" target="_blank" 
+            <!-- 🌟 歷史訂單補救按鈕加上 onclick 觸發狀態更新 -->
+            <a href="${whatsappUrl}" target="_blank" onclick="markWhatsappClicked('${o.dbId}')"
                class="bg-green-500 hover:bg-green-600 text-white px-3 py-1.5 rounded-lg font-bold flex items-center space-x-1 shadow-sm transition text-[11px]">
               <span>📱 傳送 WhatsApp</span>
             </a>
