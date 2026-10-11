@@ -274,15 +274,19 @@ async function submitOrder() {
     const fullContactInfo = `[${deliverySlot}] ${phone} | Adresse: ${address}${note ? ' | Note: ' + note : ''}`;
     const dbItems = items.map(i => ({ name: `${i.name_fr} (${i.name_zh})`, qty: i.qty, price: i.price }));
 
-    const { error } = await supabaseClient.from('orders').insert([
+    // 🌟 加上 .select() 以便取得 Supabase 資料庫真實生成的 ID
+    const { data, error } = await supabaseClient.from('orders').insert([
       { customer_name: name, phone: fullContactInfo, items: dbItems, total_price: total, status: 'pending' }
-    ]);
+    ]).select();
 
     if (error) {
       console.error('Supabase Error:', error);
       alert('Échec / 數據庫寫入錯誤: ' + error.message);
       return;
     }
+
+    // 取得 Supabase 該筆資料真實的 ID (UUID 或數字)
+    const realDbId = data[0].id;
 
     // 自動扣減庫存
     for (let cartItem of items) {
@@ -321,7 +325,7 @@ async function submitOrder() {
     };
     
     const whatsappUrl = generateWhatsAppLink(whatsappOrderData, orderId);
-    showWhatsAppModal(whatsappUrl, orderId);
+    showWhatsAppModal(whatsappUrl, realDbId);
 
   } catch (err) {
     console.error('Submission Error:', err);
