@@ -425,6 +425,7 @@ function closeReceiptModal() {
 }
 
 // 新增：📋 打開與渲染顧客歷史訂單 Modal
+// 新增：📋 打開與渲染顧客歷史訂單 Modal（包含一鍵發送 WhatsApp 按鈕）
 function openHistoryModal() {
   const modal = document.getElementById('history-modal');
   const container = document.getElementById('history-list');
@@ -440,19 +441,35 @@ function openHistoryModal() {
   if (history.length === 0) {
     container.innerHTML = '<div class="text-center text-gray-400 py-8 text-xs">Aucune commande récente / 尚無歷史訂單紀錄</div>';
   } else {
-    container.innerHTML = history.map(o => {
+    container.innerHTML = history.map((o, index) => {
       const itemsText = o.items ? o.items.map(i => `${i.name_fr} x${i.qty}`).join(', ') : '';
+      
+      // 為這筆歷史訂單重新構造 WhatsApp 連結
+      const whatsappOrderData = {
+        customer_name: o.name,
+        customer_phone: o.phone,
+        delivery_address: `${o.address} (${o.deliverySlot})${o.note ? ' - 備註: ' + o.note : ''}`,
+        items: o.items ? o.items.map(i => ({ name: `${i.name_fr} (${i.name_zh})`, quantity: i.qty, price: i.price })) : [],
+        total_price: o.total
+      };
+      const whatsappUrl = generateWhatsAppLink(whatsappOrderData, o.orderId);
+
       return `
-        <div class="bg-gray-50 p-3 rounded-xl border border-gray-200 text-xs space-y-1.5 shadow-sm">
+        <div class="bg-gray-50 p-3.5 rounded-xl border border-gray-200 text-xs space-y-2 shadow-sm">
           <div class="flex justify-between items-center font-bold text-gray-800 border-b pb-1">
             <span class="text-green-600">#${o.orderId}</span>
             <span class="text-gray-400 text-[10px] font-normal">${o.createdAt || ''}</span>
           </div>
           <div class="text-gray-600">📅 <strong>配送:</strong> ${o.deliverySlot}</div>
           <div class="text-gray-600 truncate">🍲 <strong>明細:</strong> ${itemsText}</div>
-          <div class="flex justify-between items-center pt-1 font-bold">
-            <span class="text-gray-500">金額:</span>
-            <span class="text-green-600 text-sm">${(o.total || 0).toFixed(2)} €</span>
+          <div class="flex justify-between items-center pt-1 font-bold border-t border-gray-100">
+            <span class="text-gray-500">總計: <span class="text-green-600 text-sm">${(o.total || 0).toFixed(2)} €</span></span>
+            
+            <!-- 🌟 增加的 WhatsApp 補救按鈕 -->
+            <a href="${whatsappUrl}" target="_blank" 
+               class="bg-green-500 hover:bg-green-600 text-white px-3 py-1.5 rounded-lg font-bold flex items-center space-x-1 shadow-sm transition text-[11px]">
+              <span>📱 傳送 WhatsApp</span>
+            </a>
           </div>
         </div>
       `;
