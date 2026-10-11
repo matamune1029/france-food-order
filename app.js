@@ -51,7 +51,7 @@ function checkIsBusinessOpen() {
 
     const totalMinutes = hour * 60 + minute;
     const openMinutes = 9 * 60;   
-    const closeMinutes = 22 * 60; 
+    const closeMinutes = 24 * 60; 
 
     return totalMinutes >= openMinutes && totalMinutes <= closeMinutes;
   } catch (e) {
