@@ -709,6 +709,7 @@ function applyOrderFilters() {
             <div class="flex items-center gap-2">
               <span class="text-sm">👤 ${o.customer_name || '匿名顧客'}</span>
               ${statusBadgeMap[st] || statusBadgeMap['pending']}
+              ${whatsappBadge}
             </div>
             <div class="text-[10px] text-gray-400 font-normal mt-0.5">${createdTimeStr}</div>
           </div>
