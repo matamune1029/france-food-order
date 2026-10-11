@@ -47,11 +47,11 @@ function checkIsBusinessOpen() {
       if (p.type === 'minute') minute = parseInt(p.value, 10);
     });
 
-  //  if (weekday === 'Sun') return false;
+    if (weekday === 'Sun') return false;
 
     const totalMinutes = hour * 60 + minute;
     const openMinutes = 9 * 60;   
-    const closeMinutes = 24 * 60; 
+    const closeMinutes = 20 * 60; 
 
     return totalMinutes >= openMinutes && totalMinutes <= closeMinutes;
   } catch (e) {
