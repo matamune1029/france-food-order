@@ -47,7 +47,7 @@ function checkIsBusinessOpen() {
       if (p.type === 'minute') minute = parseInt(p.value, 10);
     });
 
-    if (weekday === 'Sun') return false;
+  //  if (weekday === 'Sun') return false;
 
     const totalMinutes = hour * 60 + minute;
     const openMinutes = 9 * 60;   
