@@ -226,7 +226,6 @@ function saveOrderToLocal(order) {
 }
 
 async function submitOrder() {
-  // 獲取提交按鈕元素
   const submitBtn = document.querySelector('#checkout-modal button[onclick="submitOrder()"]');
   
   try {
@@ -249,7 +248,6 @@ async function submitOrder() {
 
     if (!address) return alert('Veuillez entrer votre adresse de livraison ! / 請填寫送餐地址！');
 
-    // 🔒 1. 禁用按鈕，防止重複點擊
     if (submitBtn) {
       submitBtn.disabled = true;
       submitBtn.classList.add('opacity-50', 'cursor-not-allowed');
@@ -274,7 +272,6 @@ async function submitOrder() {
     const fullContactInfo = `[${deliverySlot}] ${phone} | Adresse: ${address}${note ? ' | Note: ' + note : ''}`;
     const dbItems = items.map(i => ({ name: `${i.name_fr} (${i.name_zh})`, qty: i.qty, price: i.price }));
 
-    // 🌟 加上 .select() 以便取得 Supabase 資料庫真實生成的 ID
     const { data, error } = await supabaseClient.from('orders').insert([
       { customer_name: name, phone: fullContactInfo, items: dbItems, total_price: total, status: 'pending' }
     ]).select();
@@ -285,14 +282,7 @@ async function submitOrder() {
       return;
     }
 
-    // 取得 Supabase 該筆資料真實的 ID (UUID 或數字)
     const realDbId = data[0].id;
-
-    // 🌟 在這裡加上 dbId: realDbId
-    lastOrderDetails = { dbId: realDbId, orderId, deliverySlot, name, phone, address, note, items, total };
-
-    // 保存至本地歷史訂單
-    saveOrderToLocal(lastOrderDetails);
 
     // 自動扣減庫存
     for (let cartItem of items) {
@@ -312,16 +302,13 @@ async function submitOrder() {
       }
     }
 
-    lastOrderDetails = { orderId, deliverySlot, name, phone, address, note, items, total };
-
-    // 保存至本地歷史訂單
+    // 🌟 統一在這裡正確保存帶有 dbId 的歷史訂單
+    lastOrderDetails = { dbId: realDbId, orderId, deliverySlot, name, phone, address, note, items, total };
     saveOrderToLocal(lastOrderDetails);
 
     cart = {};
     closeCheckoutModal();
 
-    // 🌟 核心修改：生成 WhatsApp 連結並呼叫引導彈窗
-    // 構造符合 generateWhatsAppLink 格式的 orderData
     const whatsappOrderData = {
       customer_name: name,
       customer_phone: phone,
@@ -337,7 +324,6 @@ async function submitOrder() {
     console.error('Submission Error:', err);
     alert('Erreur / 提交過程發生錯誤: ' + err.message);
   } finally {
-    // 🔓 2. 無論成功或失敗，最後恢復按鈕狀態
     if (submitBtn) {
       submitBtn.disabled = false;
       submitBtn.classList.remove('opacity-50', 'cursor-not-allowed');
