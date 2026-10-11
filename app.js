@@ -584,6 +584,7 @@ async function updateOrderStatus(orderId, newStatus) {
 }
 
 // 綜合過濾與渲染
+// 綜合過濾與渲染
 function applyOrderFilters() {
   const container = document.getElementById('order-list');
   if (!container) return;
@@ -628,14 +629,15 @@ function applyOrderFilters() {
     });
   }
 
-  // 4. 計算有效金額（排除已取消的訂單）
+  // 4. 計算有效金額與有效訂單筆數（嚴格排除已取消的訂單）
   const validOrders = filtered.filter(o => (o.status || 'pending') !== 'cancelled');
   const totalMoney = validOrders.reduce((sum, o) => sum + (parseFloat(o.total_price) || 0), 0);
   
   const moneyElem = document.getElementById('stat-total-money');
   const countElem = document.getElementById('stat-order-count');
   if (moneyElem) moneyElem.innerText = totalMoney.toFixed(2);
-  if (countElem) countElem.innerText = filtered.length;
+  // 總筆數也只計算未取消的訂單（或者如果你想顯示篩選後的縂數，可以用 filtered.length，這裡採用有效訂單筆數，或保留 filtered.length 取決於需求。建議用有效訂單數）
+  if (countElem) countElem.innerText = validOrders.length;
 
   if (filtered.length === 0) {
     container.innerHTML = '<div class="text-gray-400 text-xs text-center py-6">Aucune commande trouvée / 查無訂單</div>';
@@ -691,9 +693,17 @@ function applyOrderFilters() {
             </select>
           </div>
 
-          <button type="button" onclick="copyOrderForDriver('${o.customer_name}', '${o.phone}', '${o.total_price}')" class="bg-gray-100 hover:bg-gray-200 text-gray-700 text-[10px] px-2 py-1 rounded font-bold transition">
-            📋 派送小票
-          </button>
+          <div class="flex items-center gap-1.5">
+            <!-- 當訂單為已取消時，額外顯示永久刪除按鈕 -->
+            ${isCancelled ? `
+              <button type="button" onclick="deleteOrderFromSupabase('${o.id}', '${o.customer_name}')" class="bg-red-100 hover:bg-red-200 text-red-600 text-[10px] px-2 py-1 rounded font-bold transition">
+                🗑️ 永久刪除
+              </button>
+            ` : ''}
+            <button type="button" onclick="copyOrderForDriver('${o.customer_name}', '${o.phone}', '${o.total_price}')" class="bg-gray-100 hover:bg-gray-200 text-gray-700 text-[10px] px-2 py-1 rounded font-bold transition">
+              📋 派送小票
+            </button>
+          </div>
         </div>
       </div>
     `;
@@ -1018,4 +1028,26 @@ function openDishDetailModal(id) {
 function closeDishDetailModal() {
   const modal = document.getElementById('dish-detail-modal');
   if (modal) modal.classList.add('hidden');
+}
+
+// 🌟 永久刪除 Supabase 中的已取消訂單（帶二次確認）
+async function deleteOrderFromSupabase(orderId, customerName) {
+  const confirmFirst = confirm(`⚠️ Êtes-vous sûr de vouloir supprimer définitivement la commande de "${customerName}" ?\n\n您確定要【永久刪除】來自「${customerName}」的這筆已取消訂單嗎？\n刪除後將無法恢復！`);
+  
+  if (!confirmFirst) return;
+
+  const confirmSecond = confirm(`🔴 Dernier avertissement :\n再次確認：您真的要永久刪除此訂單嗎？`);
+  if (!confirmSecond) return;
+
+  const { error } = await supabaseClient
+    .from('orders')
+    .delete()
+    .eq('id', orderId);
+
+  if (error) {
+    alert('❌ 刪除訂單失敗: ' + error.message);
+  } else {
+    alert('✅ 訂單已成功永久刪除！');
+    fetchOrders(); // 重新載入後台訂單列表
+  }
 }
