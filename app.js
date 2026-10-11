@@ -14,7 +14,7 @@ let rawOrders = [];
 let currentCategory = 'Specialite';
 let currentOrderTab = 'all'; 
 let lastOrderDetails = null;
-let orderChannel = null; // 用於後台 Realtime 訂閱
+let orderChannel = null;
 
 const fixedCategories = [
   { key: 'Specialite', fr: 'Spécialité', zh: '每日特色' },
@@ -25,7 +25,63 @@ const fixedCategories = [
   { key: 'Staple', fr: 'Riz/Nouilles', zh: '主食' }
 ];
 
-// 🔊 鈴聲 1：顧客下單成功提示音（清脆輕快高音雙音）
+// ⏰ 檢查是否在營業時間內（週一至週六 09:00 - 20:00 法國巴黎時間）
+function checkIsBusinessOpen() {
+  try {
+    // 取得當前法國巴黎時間
+    const now = new Date();
+    const formatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'Europe/Paris',
+      weekday: 'short',
+      hour: 'numeric',
+      minute: 'numeric',
+      hour12: false
+    });
+    
+    const parts = formatter.formatToParts(now);
+    let weekday = '';
+    let hour = 0;
+    let minute = 0;
+
+    parts.forEach(p => {
+      if (p.type === 'weekday') weekday = p.value; // 'Mon', 'Tue', etc.
+      if (p.type === 'hour') hour = parseInt(p.value, 10);
+      if (p.type === 'minute') minute = parseInt(p.value, 10);
+    });
+
+    // 週日不營業 (Sun)
+    if (weekday === 'Sun') {
+      return false;
+    }
+
+    // 營業時間：09:00 到 20:00 (含 20:00 整)
+    const totalMinutes = hour * 60 + minute;
+    const openMinutes = 9 * 60;   // 09:00
+    const closeMinutes = 20 * 60; // 20:00
+
+    return totalMinutes >= openMinutes && totalMinutes <= closeMinutes;
+  } catch (e) {
+    console.error('Time check error:', e);
+    return true; // 發生例外時預設開放，避免阻礙正常下單
+  }
+}
+
+// 🌐 更新網頁頂部的營業狀態顯示
+function updateBusinessStatusBar() {
+  const banner = document.getElementById('business-status-banner');
+  if (!banner) return;
+
+  const isOpen = checkIsBusinessOpen();
+  if (isOpen) {
+    banner.className = "bg-green-500 text-white text-center py-1.5 px-4 text-xs font-bold transition-all shadow-sm";
+    banner.innerHTML = "🟢 營業中 (Ouvert) — 營業時間：週一至週六 09:00 - 20:00";
+  } else {
+    banner.className = "bg-red-500 text-white text-center py-1.5 px-4 text-xs font-bold transition-all shadow-sm";
+    banner.innerHTML = "🔴 非營業時間 (Fermé) — 營業時間為週一至週六 09:00 - 20:00，目前暫不接受下單";
+  }
+}
+
+// 🔊 鈴聲 1：顧客下單成功提示音
 function playOrderSuccessSound() {
   try {
     const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -34,7 +90,7 @@ function playOrderSuccessSound() {
     const osc1 = audioCtx.createOscillator();
     const gain1 = audioCtx.createGain();
     osc1.type = 'sine';
-    osc1.frequency.setValueAtTime(587.33, now); // D5
+    osc1.frequency.setValueAtTime(587.33, now); 
     gain1.gain.setValueAtTime(0.3, now);
     gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
     osc1.connect(gain1);
@@ -45,7 +101,7 @@ function playOrderSuccessSound() {
     const osc2 = audioCtx.createOscillator();
     const gain2 = audioCtx.createGain();
     osc2.type = 'sine';
-    osc2.frequency.setValueAtTime(880, now + 0.15); // A5
+    osc2.frequency.setValueAtTime(880, now + 0.15); 
     gain2.gain.setValueAtTime(0.3, now + 0.15);
     gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
     osc2.connect(gain2);
@@ -57,7 +113,7 @@ function playOrderSuccessSound() {
   }
 }
 
-// 🔊 鈴聲 2：點擊 WhatsApp 提示音（溫和沉穩短音）
+// 🔊 鈴聲 2：點擊 WhatsApp 提示音
 function playWhatsappClickSound() {
   try {
     const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -66,8 +122,8 @@ function playWhatsappClickSound() {
     const osc = audioCtx.createOscillator();
     const gain = audioCtx.createGain();
     osc.type = 'triangle';
-    osc.frequency.setValueAtTime(440, now); // A4
-    osc.frequency.exponentialRampToValueAtTime(659.25, now + 0.15); // E5
+    osc.frequency.setValueAtTime(440, now); 
+    osc.frequency.exponentialRampToValueAtTime(659.25, now + 0.15); 
     
     gain.gain.setValueAtTime(0.3, now);
     gain.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
@@ -81,7 +137,7 @@ function playWhatsappClickSound() {
   }
 }
 
-// 🔊 鈴聲 3：後台專屬「新訂單急促提醒鈴聲」（三連音響鈴）
+// 🔊 鈴聲 3：後台專屬「新訂單急促提醒鈴聲」
 function playAdminNewOrderSound() {
   try {
     const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -91,7 +147,7 @@ function playAdminNewOrderSound() {
       const osc = audioCtx.createOscillator();
       const gain = audioCtx.createGain();
       osc.type = 'square';
-      osc.frequency.setValueAtTime(index === 2 ? 1046.5 : 783.99, now + delay); // G5 到 C6
+      osc.frequency.setValueAtTime(index === 2 ? 1046.5 : 783.99, now + delay); 
       
       gain.gain.setValueAtTime(0.2, now + delay);
       gain.gain.exponentialRampToValueAtTime(0.001, now + delay + 0.12);
@@ -297,6 +353,12 @@ function saveOrderToLocal(order) {
 }
 
 async function submitOrder() {
+  // 🔒 檢查是否在營業時間內
+  if (!checkIsBusinessOpen()) {
+    alert("❌ Désolé, nous sommes actuellement fermés !\n抱歉，目前為非營業時間（營業時間：週一至週六 09:00 - 20:00），暫不接受下單！");
+    return;
+  }
+
   const submitBtn = document.querySelector('#checkout-modal button[onclick="submitOrder()"]');
   
   try {
@@ -378,7 +440,6 @@ async function submitOrder() {
     cart = {};
     closeCheckoutModal();
 
-    // 🔊 顧客端：下單成功提示音
     playOrderSuccessSound();
 
     const whatsappOrderData = {
@@ -578,9 +639,8 @@ function toggleMode(forceCheck = false) {
 
   if (!adminView.classList.contains('hidden')) {
     fetchOrders();
-    initAdminRealtimeListener(); // 🌟 當管理員進入後台時，啟動即時新訂單監聽
+    initAdminRealtimeListener(); 
   } else {
-    // 離開後台時取消訂閱，節省資源
     if (orderChannel) {
       supabaseClient.removeChannel(orderChannel);
       orderChannel = null;
@@ -588,9 +648,8 @@ function toggleMode(forceCheck = false) {
   }
 }
 
-// 🌟 初始化後台 Supabase 即時監聽新訂單
 function initAdminRealtimeListener() {
-  if (orderChannel) return; // 避免重複訂閱
+  if (orderChannel) return;
 
   orderChannel = supabaseClient
     .channel('admin-orders-channel')
@@ -599,9 +658,7 @@ function initAdminRealtimeListener() {
       { event: 'INSERT', schema: 'public', table: 'orders' },
       (payload) => {
         console.log('🔔 偵測到新訂單進來：', payload.new);
-        // 播放後台專屬新訂單提示音
         playAdminNewOrderSound();
-        // 自動重新整理訂單列表
         fetchOrders();
       }
     )
@@ -1085,6 +1142,10 @@ async function deleteDish(event, id, nameZh) {
 window.addEventListener('DOMContentLoaded', () => {
   fetchMenu();
   checkUrlAdminParam();
+  
+  // 🌟 初始化頂部營業狀態，並每分鐘自動更新一次
+  updateBusinessStatusBar();
+  setInterval(updateBusinessStatusBar, 60000);
 });
 
 function openDishDetailModal(id) {
@@ -1228,7 +1289,6 @@ function showWhatsAppModal(whatsappUrl, orderId) {
 }
 
 async function markWhatsappClicked(orderId) {
-  // 🔊 顧客端：點擊 WhatsApp 提示音
   playWhatsappClickSound();
 
   if (!orderId) return;
