@@ -4,19 +4,17 @@ const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 // 🏪 店家設定
 const STORE_CONFIG = {
-  // 將店家 WhatsApp 號碼改為香港號碼（格式：國家區號 852 + 電話號碼，不含 + 號或空格）
   whatsappNumber: "85292773583", 
   storeName: "Cici Cuisine"
 };
 
 let cart = {};
 let menuData = [];
-let rawOrders = []; // 暫存原始訂單數據
+let rawOrders = []; 
 let currentCategory = 'Specialite';
-let currentOrderTab = 'all'; // 訂單時間標籤: 'all', 'today', 'tomorrow'
+let currentOrderTab = 'all'; 
 let lastOrderDetails = null;
 
-// 1. 標準分類標籤清單
 const fixedCategories = [
   { key: 'Specialite', fr: 'Spécialité', zh: '每日特色' },
   { key: 'Viandes', fr: 'Viandes', zh: '葷菜' },
@@ -26,7 +24,6 @@ const fixedCategories = [
   { key: 'Staple', fr: 'Riz/Nouilles', zh: '主食' }
 ];
 
-// 2. 歸一化匹配邏輯
 function normalizeCategory(rawCat, nameZh = '', nameFr = '') {
   const cat = (rawCat || '').toString().toLowerCase().trim();
   const zh = (nameZh || '').toString().toLowerCase();
@@ -51,7 +48,6 @@ function normalizeCategory(rawCat, nameZh = '', nameFr = '') {
   return 'Viandes';
 }
 
-// 3. 載入所有菜單
 async function fetchMenu() {
   try {
     const { data, error } = await supabaseClient.from('menu_items').select('*');
@@ -66,7 +62,6 @@ async function fetchMenu() {
   }
 }
 
-// 4. 渲染左側分類側邊欄
 function renderCategoryBar() {
   const categoryContainer = document.getElementById('category-bar');
   if (!categoryContainer) return;
@@ -89,7 +84,6 @@ function switchCategory(catKey) {
   renderMenu();
 }
 
-// 5. 渲染前台菜單列表
 function renderMenu() {
   const container = document.getElementById('menu-container');
   if (!container) return;
@@ -129,13 +123,11 @@ function renderMenu() {
 
     return `
       <div class="bg-white p-3 rounded-xl shadow-sm flex items-center gap-3 border border-gray-100 ${!isAvailable ? 'opacity-50 grayscale' : ''}">
-        <!-- 1. 圖片加上 onclick 和 cursor-pointer -->
         <div onclick="openDishDetailModal('${item.id}')" class="cursor-pointer flex-shrink-0">
           ${imgHtml}
         </div>
         
         <div class="flex-1 min-w-0">
-          <!-- 2. 法文菜名加上 onclick、cursor-pointer 與 hover 變色效果 -->
           <div onclick="openDishDetailModal('${item.id}')" class="font-bold text-gray-800 text-xs sm:text-sm leading-tight line-clamp-2 break-words cursor-pointer hover:text-green-600 transition">
             ${item.name_fr || ''}
             ${!isAvailable ? '<span class="ml-1 text-[10px] bg-gray-200 text-gray-600 px-1 py-0.5 rounded font-normal inline-block">Épuisé</span>' : ''}
@@ -163,7 +155,6 @@ function renderMenu() {
   }).join('');
 }
 
-// 6. 更新購物車
 function updateCart(id, delta) {
   const item = menuData.find(i => i.id === id);
   const maxStock = (item && typeof item.stock === 'number') ? item.stock : 99;
@@ -200,7 +191,6 @@ function updateCart(id, delta) {
   }
 }
 
-// 7. 彈窗與結算邏輯
 function openCheckoutModal() {
   if (Object.keys(cart).length === 0) return alert('Votre panier est vide ! / 購物車是空的！');
   document.getElementById('checkout-modal').classList.remove('hidden');
@@ -210,7 +200,6 @@ function closeCheckoutModal() {
   document.getElementById('checkout-modal').classList.add('hidden');
 }
 
-// 新增：把訂單保存至顧客本地（LocalStorage）
 function saveOrderToLocal(order) {
   try {
     let history = JSON.parse(localStorage.getItem('cici_order_history') || '[]');
@@ -218,7 +207,7 @@ function saveOrderToLocal(order) {
       ...order,
       createdAt: new Date().toLocaleString()
     });
-    if (history.length > 20) history = history.slice(0, 20); // 保留最近 20 筆
+    if (history.length > 20) history = history.slice(0, 20);
     localStorage.setItem('cici_order_history', JSON.stringify(history));
   } catch (e) {
     console.error('Save local order error:', e);
@@ -302,7 +291,7 @@ async function submitOrder() {
       }
     }
 
-    // 🌟 統一在這裡正確保存帶有 dbId 的歷史訂單
+    // 🌟 統一在這裡正確儲存帶有 dbId 的歷史紀錄（只存一次，避免被覆蓋）
     lastOrderDetails = { dbId: realDbId, orderId, deliverySlot, name, phone, address, note, items, total };
     saveOrderToLocal(lastOrderDetails);
 
@@ -351,7 +340,6 @@ function showReceiptModal(order) {
   document.getElementById('receipt-modal').classList.remove('hidden');
 }
 
-// 新增：📸 一鍵將小票渲染並下載為 PNG 圖片
 async function downloadReceiptAsImage() {
   const receiptCard = document.getElementById('receipt-card');
   if (!receiptCard) return;
@@ -363,15 +351,11 @@ async function downloadReceiptAsImage() {
     });
 
     const imageDataUrl = canvas.toDataURL('image/png');
-
-    // 判斷是否為 iOS 設備 (iPhone/iPad)
     const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
 
     if (isIOS) {
-      // iOS / Safari / 微信環境：彈出長按圖片保存視窗
       showImagePreviewOverlay(imageDataUrl);
     } else {
-      // Android / PC：直接觸發檔案下載
       const link = document.createElement('a');
       link.href = imageDataUrl;
       link.download = `Receipt_${lastOrderDetails ? lastOrderDetails.orderId : 'CC-0001'}.png`;
@@ -385,7 +369,6 @@ async function downloadReceiptAsImage() {
   }
 }
 
-// 輔助函式：顯示長按圖片保存的浮層彈窗
 function showImagePreviewOverlay(imgUrl) {
   const overlay = document.createElement('div');
   overlay.className = 'fixed inset-0 bg-black/80 z-[60] flex flex-col items-center justify-center p-4 animate-fade-in';
@@ -420,8 +403,6 @@ function closeReceiptModal() {
   renderMenu();
 }
 
-// 新增：📋 打開與渲染顧客歷史訂單 Modal
-// 新增：📋 打開與渲染顧客歷史訂單 Modal（包含一鍵發送 WhatsApp 按鈕）
 function openHistoryModal() {
   const modal = document.getElementById('history-modal');
   const container = document.getElementById('history-list');
@@ -440,7 +421,6 @@ function openHistoryModal() {
     container.innerHTML = history.map((o, index) => {
       const itemsText = o.items ? o.items.map(i => `${i.name_fr} x${i.qty}`).join(', ') : '';
       
-      // 為這筆歷史訂單重新構造 WhatsApp 連結
       const whatsappOrderData = {
         customer_name: o.name,
         customer_phone: o.phone,
@@ -449,6 +429,9 @@ function openHistoryModal() {
         total_price: o.total
       };
       const whatsappUrl = generateWhatsAppLink(whatsappOrderData, o.orderId);
+      
+      // 確保順利帶入歷史紀錄的 dbId（若是舊訂單沒有 dbId 則防呆給空字串）
+      const targetDbId = o.dbId || '';
 
       return `
         <div class="bg-gray-50 p-3.5 rounded-xl border border-gray-200 text-xs space-y-2 shadow-sm">
@@ -461,8 +444,8 @@ function openHistoryModal() {
           <div class="flex justify-between items-center pt-1 font-bold border-t border-gray-100">
             <span class="text-gray-500">總計: <span class="text-green-600 text-sm">${(o.total || 0).toFixed(2)} €</span></span>
             
-            <!-- 🌟 歷史訂單補救按鈕加上 onclick 觸發狀態更新 -->
-            <a href="${whatsappUrl}" target="_blank" onclick="markWhatsappClicked('${o.dbId}')"
+            <!-- 🌟 歷史訂單補救按鈕，點擊時會把 Supabase 的 dbId 傳給 markWhatsappClicked -->
+            <a href="${whatsappUrl}" target="_blank" onclick="markWhatsappClicked('${targetDbId}')"
                class="bg-green-500 hover:bg-green-600 text-white px-3 py-1.5 rounded-lg font-bold flex items-center space-x-1 shadow-sm transition text-[11px]">
               <span>📱 傳送 WhatsApp</span>
             </a>
@@ -480,7 +463,6 @@ function closeHistoryModal() {
   if (modal) modal.classList.add('hidden');
 }
 
-// 8. 後台管理與暗號
 let secretClickCount = 0;
 let secretClickTimer = null;
 
@@ -548,10 +530,6 @@ function switchAdminTab(tab) {
   }
 }
 
-// ----------------------------------------------------
-// 🌟 訂單管理邏輯：狀態切換、過濾、搜尋与司機小票
-// ----------------------------------------------------
-
 async function fetchOrders() {
   const container = document.getElementById('order-list');
   if (!container) return;
@@ -599,7 +577,6 @@ function filterOrderTab(tabKey) {
   applyOrderFilters();
 }
 
-// 快捷修改訂單狀態
 async function updateOrderStatus(orderId, newStatus) {
   const { error } = await supabaseClient
     .from('orders')
@@ -615,8 +592,6 @@ async function updateOrderStatus(orderId, newStatus) {
   }
 }
 
-// 綜合過濾與渲染
-// 綜合過濾與渲染
 function applyOrderFilters() {
   const container = document.getElementById('order-list');
   if (!container) return;
@@ -625,15 +600,12 @@ function applyOrderFilters() {
   const datePickerVal = document.getElementById('order-date-picker')?.value;
   const statusFilterVal = document.getElementById('order-status-filter')?.value || 'all';
 
-
   let filtered = [...rawOrders];
 
-  // 1. 狀態選單過濾 (pending, delivering, completed, cancelled)
   if (statusFilterVal !== 'all') {
     filtered = filtered.filter(o => (o.status || 'pending') === statusFilterVal);
   }
 
-  // 2. 按時間 Tab / 日期選擇過濾
   if (datePickerVal) {
     filtered = filtered.filter(o => {
       if (!o.created_at) return false;
@@ -652,7 +624,6 @@ function applyOrderFilters() {
     });
   }
 
-  // 3. 按關鍵字過濾
   if (searchKeyword) {
     filtered = filtered.filter(o => {
       const nameMatch = (o.customer_name || '').toLowerCase().includes(searchKeyword);
@@ -662,14 +633,12 @@ function applyOrderFilters() {
     });
   }
 
-  // 4. 計算有效金額與有效訂單筆數（嚴格排除已取消的訂單）
   const validOrders = filtered.filter(o => (o.status || 'pending') !== 'cancelled');
   const totalMoney = validOrders.reduce((sum, o) => sum + (parseFloat(o.total_price) || 0), 0);
   
   const moneyElem = document.getElementById('stat-total-money');
   const countElem = document.getElementById('stat-order-count');
   if (moneyElem) moneyElem.innerText = totalMoney.toFixed(2);
-  // 總筆數也只計算未取消的訂單（或者如果你想顯示篩選後的縂數，可以用 filtered.length，這裡採用有效訂單筆數，或保留 filtered.length 取決於需求。建議用有效訂單數）
   if (countElem) countElem.innerText = validOrders.length;
 
   if (filtered.length === 0) {
@@ -677,7 +646,6 @@ function applyOrderFilters() {
     return;
   }
 
-  // 5. 渲染列表
   const statusBadgeMap = {
     'pending': '<span class="bg-amber-100 text-amber-700 px-2 py-0.5 rounded text-[10px] font-bold">⏳ 待處理</span>',
     'delivering': '<span class="bg-blue-100 text-blue-700 px-2 py-0.5 rounded text-[10px] font-bold">🛵 配送中</span>',
@@ -721,7 +689,6 @@ function applyOrderFilters() {
         </ul>
 
         <div class="flex justify-between items-center pt-2 border-t text-xs">
-          <!-- 快捷一鍵修改狀態下拉選單 -->
           <div class="flex items-center gap-1">
             <span class="text-[10px] text-gray-400 font-bold">狀態:</span>
             <select onchange="updateOrderStatus('${o.id}', this.value)" class="text-[11px] border rounded p-1 font-bold bg-gray-50 text-gray-700">
@@ -733,7 +700,6 @@ function applyOrderFilters() {
           </div>
 
           <div class="flex items-center gap-1.5">
-            <!-- 當訂單為已取消時，額外顯示永久刪除按鈕 -->
             ${isCancelled ? `
               <button type="button" onclick="deleteOrderFromSupabase('${o.id}', '${o.customer_name}')" class="bg-red-100 hover:bg-red-200 text-red-600 text-[10px] px-2 py-1 rounded font-bold transition">
                 🗑️ 永久刪除
@@ -758,7 +724,6 @@ function copyOrderForDriver(name, contactInfo, total) {
   });
 }
 
-// 渲染後台菜單列表
 async function fetchAdminMenu() {
   const container = document.getElementById('admin-menu-list');
   if (!container) return;
@@ -1015,7 +980,6 @@ window.addEventListener('DOMContentLoaded', () => {
   checkUrlAdminParam();
 });
 
-// 🌟 打開菜品詳情大圖彈窗
 function openDishDetailModal(id) {
   const item = menuData.find(i => i.id === id);
   if (!item) return;
@@ -1028,14 +992,12 @@ function openDishDetailModal(id) {
   const stockElem = document.getElementById('detail-modal-stock');
   const addBtn = document.getElementById('detail-modal-add-btn');
 
-  // 渲染圖片
   if (item.image_url) {
     imgContainer.innerHTML = `<img src="${item.image_url}" class="w-full h-full object-cover">`;
   } else {
     imgContainer.innerHTML = `<div class="text-4xl text-orange-400 font-bold">🍲</div>`;
   }
 
-  // 渲染文字與價格
   nameFr.innerText = item.name_fr || '';
   nameZh.innerText = item.name_zh || '';
   priceElem.innerText = (item.price || 0).toFixed(2) + ' €';
@@ -1045,7 +1007,6 @@ function openDishDetailModal(id) {
 
   stockElem.innerText = `Stock: ${maxStock}`;
 
-  // 綁定彈窗內的加入購物車按鈕
   if (isAvailable) {
     addBtn.disabled = false;
     addBtn.className = "w-full bg-green-500 hover:bg-green-600 text-white font-bold py-3 rounded-xl text-sm shadow transition active:scale-95";
@@ -1063,26 +1024,21 @@ function openDishDetailModal(id) {
   modal.classList.remove('hidden');
 }
 
-// 關閉菜品詳情彈窗
 function closeDishDetailModal() {
   const modal = document.getElementById('dish-detail-modal');
   if (modal) modal.classList.add('hidden');
 }
 
-
-// 🌟 打印訂單完整結構並嘗試刪除
 async function deleteOrderFromSupabase(orderId, customerName) {
   const confirmDelete = confirm(`⚠️ Supprimer définitivement la commande de "${customerName}" ?\n\n確定要永久刪除來自「${customerName}」的這筆訂單嗎？`);
   
   if (!confirmDelete) return;
 
-  // 在 console 中印出當前 rawOrders 裡對應的那筆完整訂單數據
   const targetOrder = rawOrders.find(o => o.id == orderId);
   console.log("👉 點擊刪除的完整訂單資料物件：", targetOrder);
   console.log("👉 傳入的 orderId 數值與類型:", orderId, typeof orderId);
 
   try {
-    // 嘗試直接用 rawOrders 裡抓到的 id 刪除
     const { data, error } = await supabaseClient
       .from('orders')
       .delete()
@@ -1104,14 +1060,11 @@ async function deleteOrderFromSupabase(orderId, customerName) {
   }
 }
 
-// 📲 生成一鍵發送至 WhatsApp 的 URL 連結
 function generateWhatsAppLink(orderData, orderId) {
   const phone = STORE_CONFIG.whatsappNumber;
   
-  // 組合餐點明細文字
   const itemsText = orderData.items.map(item => `- ${item.name} x${item.quantity} (€${(item.price * item.quantity).toFixed(2)})`).join('\n');
   
-  // 預填的訊息內容
   const message = `Bonjour ${STORE_CONFIG.storeName} ! 👋
 J'ai passé une commande sur votre site.
 ----------------------------------
@@ -1127,14 +1080,10 @@ ${itemsText}
 ----------------------------------
 Veuillez me confirmer la commande pour lancer la préparation, merci ! 🙏`;
 
-  // 使用 encodeURIComponent 確保中文與換行符能在網址中正確傳輸
   return `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
 }
 
-// 📱 顯示引導顧客發送 WhatsApp 訊息的彈窗
-// 📱 顯示引導顧客發送 WhatsApp 訊息的彈窗（加入點擊記錄功能）
 function showWhatsAppModal(whatsappUrl, orderId) {
-  // 移除可能殘留的舊彈窗
   const existingModal = document.getElementById('whatsapp-modal');
   if (existingModal) existingModal.remove();
 
@@ -1153,7 +1102,6 @@ function showWhatsAppModal(whatsappUrl, orderId) {
           <span class="text-xs text-amber-600">Veuillez envoyer un message WhatsApp pour valider la commande.</span>
         </div>
 
-        <!-- 🌟 點擊按鈕時觸發標記更新 -->
         <a href="${whatsappUrl}" target="_blank" onclick="markWhatsappClicked('${orderId}')"
            class="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-4 rounded-xl shadow-lg flex items-center justify-center space-x-2 transition duration-200 mb-3 text-lg">
           <svg class="w-6 h-6 fill-current" viewBox="0 0 24 24">
@@ -1172,8 +1120,8 @@ function showWhatsAppModal(whatsappUrl, orderId) {
   document.body.insertAdjacentHTML('beforeend', modalHtml);
 }
 
-// 🌟 輔助函式：當顧客點擊按鈕時，在 Supabase 將 whatsapp_sent 設為 true
 async function markWhatsappClicked(orderId) {
+  if (!orderId) return;
   try {
     await supabaseClient
       .from('orders')
