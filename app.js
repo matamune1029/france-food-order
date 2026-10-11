@@ -130,11 +130,13 @@ function renderMenu() {
         <div class="flex-1 min-w-0">
           <!-- 2. 法文菜名加上 onclick、cursor-pointer 與 hover 變色效果 -->
           <div onclick="openDishDetailModal('${item.id}')" class="font-bold text-gray-800 text-xs sm:text-sm leading-tight line-clamp-2 break-words cursor-pointer hover:text-green-600 transition">
-            ${item.name_fr \vert{}\vert{} ''}${!isAvailable ? '<span class="ml-1 text-[10px] bg-gray-200 text-gray-600 px-1 py-0.5 rounded font-normal inline-block">Épuisé</span>' : ''}
+            ${item.name_fr || ''}
+            ${!isAvailable ? '<span class="ml-1 text-[10px] bg-gray-200 text-gray-600 px-1 py-0.5 rounded font-normal inline-block">Épuisé</span>' : ''}
           </div>
           <div class="text-xs text-gray-500 font-normal mt-0.5 truncate">${item.name_zh || ''}</div>
           <div class="flex items-center gap-2 mt-1">
-            <span class="text-green-600 font-extrabold text-base">${item.price \vert{}\vert{} 0} €</span>${isAvailable ? `<span class="text-[10px] text-orange-600 bg-orange-50 px-1.5 py-0.5 rounded border border-orange-100">Stock: ${maxStock}</span>` : ''}
+            <span class="text-green-600 font-extrabold text-base">${item.price || 0} €</span>
+            ${isAvailable ? `<span class="text-[10px] text-orange-600 bg-orange-50 px-1.5 py-0.5 rounded border border-orange-100">Stock: ${maxStock}</span>` : ''}
           </div>
         </div>
         
