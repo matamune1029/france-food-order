@@ -2,6 +2,13 @@ const SUPABASE_URL = 'https://zcivplddxtaqlefrtajr.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_eQG7FVgOU36Z8edfnrf27w_5A7tlNiq';
 const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
+// 🏪 店家設定
+const STORE_CONFIG = {
+  // 將店家 WhatsApp 號碼改為香港號碼（格式：國家區號 852 + 電話號碼，不含 + 號或空格）
+  whatsappNumber: "85201234567", 
+  storeName: "Cici Cuisine"
+};
+
 let cart = {};
 let menuData = [];
 let rawOrders = []; // 暫存原始訂單數據
@@ -302,7 +309,19 @@ async function submitOrder() {
 
     cart = {};
     closeCheckoutModal();
-    showReceiptModal(lastOrderDetails);
+
+    // 🌟 核心修改：生成 WhatsApp 連結並呼叫引導彈窗
+    // 構造符合 generateWhatsAppLink 格式的 orderData
+    const whatsappOrderData = {
+      customer_name: name,
+      customer_phone: phone,
+      delivery_address: `${address} (${deliverySlot})${note ? ' - 備註: ' + note : ''}`,
+      items: items.map(i => ({ name: `${i.name_fr} (${i.name_zh})`, quantity: i.qty, price: i.price })),
+      total_price: total
+    };
+    
+    const whatsappUrl = generateWhatsAppLink(whatsappOrderData, orderId);
+    showWhatsAppModal(whatsappUrl, orderId);
 
   } catch (err) {
     console.error('Submission Error:', err);
@@ -1063,4 +1082,70 @@ async function deleteOrderFromSupabase(orderId, customerName) {
     console.error('刪除過程發生異常:', err);
     alert('❌ 系統異常: ' + err.message);
   }
+}
+
+// 📲 生成一鍵發送至 WhatsApp 的 URL 連結
+function generateWhatsAppLink(orderData, orderId) {
+  const phone = STORE_CONFIG.whatsappNumber;
+  
+  // 組合餐點明細文字
+  const itemsText = orderData.items.map(item => `- ${item.name} x${item.quantity} (€${(item.price * item.quantity).toFixed(2)})`).join('\n');
+  
+  // 預填的訊息內容
+  const message = `Bonjour ${STORE_CONFIG.storeName} ! 👋
+J'ai passé une commande sur votre site.
+----------------------------------
+🧾 訂單號 / Order ID: #${orderId.slice(0, 8)}
+👤 姓名 / Nom: ${orderData.customer_name}
+📞 電話 / Tél: ${orderData.customer_phone}
+📍 地址/備註: ${orderData.delivery_address || '到店自取 / Click & Collect'}
+
+🛍️ 訂單明細 / Détails:
+${itemsText}
+
+💰 總金額 / Total: €${orderData.total_price.toFixed(2)}
+----------------------------------
+Veuillez me confirmer la commande pour lancer la préparation, merci ! 🙏`;
+
+  // 使用 encodeURIComponent 確保中文與換行符能在網址中正確傳輸
+  return `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
+}
+
+// 📱 顯示引導顧客發送 WhatsApp 訊息的彈窗
+function showWhatsAppModal(whatsappUrl, orderId) {
+  // 移除可能殘留的舊彈窗
+  const existingModal = document.getElementById('whatsapp-modal');
+  if (existingModal) existingModal.remove();
+
+  const modalHtml = `
+    <div id="whatsapp-modal" class="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center p-4 z-50 animate-fade-in">
+      <div class="bg-white rounded-2xl max-w-md w-full p-6 text-center shadow-2xl transform transition-all">
+        <div class="w-16 h-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-4 text-3xl">
+          📱
+        </div>
+        <h3 class="text-xl font-bold text-gray-800 mb-2">🎉 下單成功！Commande envoyée !</h3>
+        <p class="text-xs text-gray-500 mb-4">訂單編號 / N°: #${orderId.slice(0, 8)}</p>
+        
+        <div class="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-6 text-left text-sm text-amber-800">
+          ⚠️ <strong>提醒 / Attention :</strong><br>
+          請點擊下方按鈕，發送 WhatsApp 訊息給店家確認訂單，店家收到後才會開始製作哦！<br>
+          <span class="text-xs text-amber-600">Veuillez envoyer un message WhatsApp pour valider la commande.</span>
+        </div>
+
+        <a href="${whatsappUrl}" target="_blank" 
+           class="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-4 rounded-xl shadow-lg flex items-center justify-center space-x-2 transition duration-200 mb-3 text-lg">
+          <svg class="w-6 h-6 fill-current" viewBox="0 0 24 24">
+            <path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981z"/>
+          </svg>
+          <span>一鍵開啟 WhatsApp 發送確認</span>
+        </a>
+
+        <button onclick="document.getElementById('whatsapp-modal').remove()" class="text-xs text-gray-400 hover:text-gray-600 mt-2 underline">
+          關閉視窗 / Fermer
+        </button>
+      </div>
+    </div>
+  `;
+
+  document.body.insertAdjacentHTML('beforeend', modalHtml);
 }
