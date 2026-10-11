@@ -14,6 +14,7 @@ let rawOrders = [];
 let currentCategory = 'Specialite';
 let currentOrderTab = 'all'; 
 let lastOrderDetails = null;
+let orderChannel = null; // 用於後台 Realtime 訂閱
 
 const fixedCategories = [
   { key: 'Specialite', fr: 'Spécialité', zh: '每日特色' },
@@ -24,13 +25,12 @@ const fixedCategories = [
   { key: 'Staple', fr: 'Riz/Nouilles', zh: '主食' }
 ];
 
-// 🔊 鈴聲 1：下單成功提示音（清脆輕快高音雙音）
+// 🔊 鈴聲 1：顧客下單成功提示音（清脆輕快高音雙音）
 function playOrderSuccessSound() {
   try {
     const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     const now = audioCtx.currentTime;
 
-    // 第一聲
     const osc1 = audioCtx.createOscillator();
     const gain1 = audioCtx.createGain();
     osc1.type = 'sine';
@@ -42,7 +42,6 @@ function playOrderSuccessSound() {
     osc1.start(now);
     osc1.stop(now + 0.2);
 
-    // 第二聲（高音尾音）
     const osc2 = audioCtx.createOscillator();
     const gain2 = audioCtx.createGain();
     osc2.type = 'sine';
@@ -79,6 +78,31 @@ function playWhatsappClickSound() {
     osc.stop(now + 0.25);
   } catch (e) {
     console.log('Audio error:', e);
+  }
+}
+
+// 🔊 鈴聲 3：後台專屬「新訂單急促提醒鈴聲」（三連音響鈴）
+function playAdminNewOrderSound() {
+  try {
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const now = audioCtx.currentTime;
+
+    [0, 0.15, 0.3].forEach((delay, index) => {
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = 'square';
+      osc.frequency.setValueAtTime(index === 2 ? 1046.5 : 783.99, now + delay); // G5 到 C6
+      
+      gain.gain.setValueAtTime(0.2, now + delay);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + delay + 0.12);
+      
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start(now + delay);
+      osc.stop(now + delay + 0.12);
+    });
+  } catch (e) {
+    console.log('Admin Audio error:', e);
   }
 }
 
@@ -331,7 +355,6 @@ async function submitOrder() {
 
     const realDbId = data[0].id;
 
-    // 自動扣減庫存
     for (let cartItem of items) {
       const targetDish = menuData.find(m => m.id === cartItem.id);
       if (targetDish) {
@@ -355,7 +378,7 @@ async function submitOrder() {
     cart = {};
     closeCheckoutModal();
 
-    // 🔊 觸發下單成功提示音
+    // 🔊 顧客端：下單成功提示音
     playOrderSuccessSound();
 
     const whatsappOrderData = {
@@ -555,7 +578,34 @@ function toggleMode(forceCheck = false) {
 
   if (!adminView.classList.contains('hidden')) {
     fetchOrders();
+    initAdminRealtimeListener(); // 🌟 當管理員進入後台時，啟動即時新訂單監聽
+  } else {
+    // 離開後台時取消訂閱，節省資源
+    if (orderChannel) {
+      supabaseClient.removeChannel(orderChannel);
+      orderChannel = null;
+    }
   }
+}
+
+// 🌟 初始化後台 Supabase 即時監聽新訂單
+function initAdminRealtimeListener() {
+  if (orderChannel) return; // 避免重複訂閱
+
+  orderChannel = supabaseClient
+    .channel('admin-orders-channel')
+    .on(
+      'postgres_changes',
+      { event: 'INSERT', schema: 'public', table: 'orders' },
+      (payload) => {
+        console.log('🔔 偵測到新訂單進來：', payload.new);
+        // 播放後台專屬新訂單提示音
+        playAdminNewOrderSound();
+        // 自動重新整理訂單列表
+        fetchOrders();
+      }
+    )
+    .subscribe();
 }
 
 function checkUrlAdminParam() {
@@ -1159,7 +1209,6 @@ function showWhatsAppModal(whatsappUrl, orderId) {
           <span class="text-xs text-amber-600">Veuillez envoyer un message WhatsApp pour valider la commande.</span>
         </div>
 
-        <!-- 🌟 點擊按鈕時觸發標記更新與 WhatsApp 專屬鈴聲 -->
         <a href="${whatsappUrl}" target="_blank" onclick="markWhatsappClicked('${orderId}')"
            class="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-4 rounded-xl shadow-lg flex items-center justify-center space-x-2 transition duration-200 mb-3 text-lg">
           <svg class="w-6 h-6 fill-current" viewBox="0 0 24 24">
@@ -1179,7 +1228,7 @@ function showWhatsAppModal(whatsappUrl, orderId) {
 }
 
 async function markWhatsappClicked(orderId) {
-  // 🔊 觸發點擊 WhatsApp 提示音
+  // 🔊 顧客端：點擊 WhatsApp 提示音
   playWhatsappClickSound();
 
   if (!orderId) return;
