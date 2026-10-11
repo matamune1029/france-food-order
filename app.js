@@ -629,6 +629,7 @@ function applyOrderFilters() {
   const datePickerVal = document.getElementById('order-date-picker')?.value;
   const statusFilterVal = document.getElementById('order-status-filter')?.value || 'all';
 
+
   let filtered = [...rawOrders];
 
   // 1. 狀態選單過濾 (pending, delivering, completed, cancelled)
@@ -692,6 +693,11 @@ function applyOrderFilters() {
     const st = o.status || 'pending';
     const isCancelled = st === 'cancelled';
     const createdTimeStr = o.created_at ? new Date(o.created_at).toLocaleString() : '';
+
+    const whatsappBadge = o.whatsapp_sent 
+      ? '<span class="bg-green-50 text-green-700 border border-green-200 px-1.5 py-0.5 rounded text-[10px] font-bold">💬 已點擊WA</span>' 
+      : '<span class="bg-gray-100 text-gray-400 px-1.5 py-0.5 rounded text-[10px]">⏳ 未點WA</span>';
+    
     const itemsList = Array.isArray(o.items) 
       ? o.items.map(i => `<li class="flex justify-between"><span>${i.name || '菜品'}</span><span class="font-bold">x${i.qty || 1}</span></li>`).join('')
       : '<li class="text-gray-400">無明細</li>';
@@ -1129,6 +1135,7 @@ Veuillez me confirmer la commande pour lancer la préparation, merci ! 🙏`;
 }
 
 // 📱 顯示引導顧客發送 WhatsApp 訊息的彈窗
+// 📱 顯示引導顧客發送 WhatsApp 訊息的彈窗（加入點擊記錄功能）
 function showWhatsAppModal(whatsappUrl, orderId) {
   // 移除可能殘留的舊彈窗
   const existingModal = document.getElementById('whatsapp-modal');
@@ -1149,7 +1156,8 @@ function showWhatsAppModal(whatsappUrl, orderId) {
           <span class="text-xs text-amber-600">Veuillez envoyer un message WhatsApp pour valider la commande.</span>
         </div>
 
-        <a href="${whatsappUrl}" target="_blank" 
+        <!-- 🌟 點擊按鈕時觸發標記更新 -->
+        <a href="${whatsappUrl}" target="_blank" onclick="markWhatsappClicked('${orderId}')"
            class="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-4 rounded-xl shadow-lg flex items-center justify-center space-x-2 transition duration-200 mb-3 text-lg">
           <svg class="w-6 h-6 fill-current" viewBox="0 0 24 24">
             <path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981z"/>
@@ -1165,4 +1173,16 @@ function showWhatsAppModal(whatsappUrl, orderId) {
   `;
 
   document.body.insertAdjacentHTML('beforeend', modalHtml);
+}
+
+// 🌟 輔助函式：當顧客點擊按鈕時，在 Supabase 將 whatsapp_sent 設為 true
+async function markWhatsappClicked(orderId) {
+  try {
+    await supabaseClient
+      .from('orders')
+      .update({ whatsapp_sent: true })
+      .eq('id', orderId);
+  } catch (e) {
+    console.error('更新 WhatsApp 點擊狀態失敗:', e);
+  }
 }
