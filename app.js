@@ -2,7 +2,6 @@ const SUPABASE_URL = 'https://zcivplddxtaqlefrtajr.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_eQG7FVgOU36Z8edfnrf27w_5A7tlNiq';
 const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-// 🏪 店家設定
 const STORE_CONFIG = {
   whatsappNumber: "85292773583", 
   storeName: "Cici Cuisine"
@@ -28,7 +27,6 @@ const fixedCategories = [
 // ⏰ 檢查是否在營業時間內（週一至週六 09:00 - 20:00 法國巴黎時間）
 function checkIsBusinessOpen() {
   try {
-    // 取得當前法國巴黎時間
     const now = new Date();
     const formatter = new Intl.DateTimeFormat('en-US', {
       timeZone: 'Europe/Paris',
@@ -44,40 +42,51 @@ function checkIsBusinessOpen() {
     let minute = 0;
 
     parts.forEach(p => {
-      if (p.type === 'weekday') weekday = p.value; // 'Mon', 'Tue', etc.
+      if (p.type === 'weekday') weekday = p.value;
       if (p.type === 'hour') hour = parseInt(p.value, 10);
       if (p.type === 'minute') minute = parseInt(p.value, 10);
     });
 
-    // 週日不營業 (Sun)
-    if (weekday === 'Sun') {
-      return false;
-    }
+    if (weekday === 'Sun') return false;
 
-    // 營業時間：09:00 到 20:00 (含 20:00 整)
     const totalMinutes = hour * 60 + minute;
-    const openMinutes = 9 * 60;   // 09:00
-    const closeMinutes = 20 * 60; // 20:00
+    const openMinutes = 9 * 60;   
+    const closeMinutes = 20 * 60; 
 
     return totalMinutes >= openMinutes && totalMinutes <= closeMinutes;
   } catch (e) {
     console.error('Time check error:', e);
-    return true; // 發生例外時預設開放，避免阻礙正常下單
+    return true; 
   }
 }
 
-// 🌐 更新網頁頂部的營業狀態顯示
+// 🌐 更新網頁頂部狀態與結算按鈕狀態
 function updateBusinessStatusBar() {
   const banner = document.getElementById('business-status-banner');
-  if (!banner) return;
-
+  const checkoutBtn = document.getElementById('checkout-btn');
   const isOpen = checkIsBusinessOpen();
-  if (isOpen) {
-    banner.className = "bg-green-500 text-white text-center py-1.5 px-4 text-xs font-bold transition-all shadow-sm";
-    banner.innerHTML = "🟢 營業中 (Ouvert) — 營業時間：週一至週六 09:00 - 20:00";
-  } else {
-    banner.className = "bg-red-500 text-white text-center py-1.5 px-4 text-xs font-bold transition-all shadow-sm";
-    banner.innerHTML = "🔴 非營業時間 (Fermé) — 營業時間為週一至週六 09:00 - 20:00，目前暫不接受下單";
+
+  if (banner) {
+    if (isOpen) {
+      banner.className = "bg-green-500 text-white text-center py-1.5 px-4 text-xs font-bold transition-all shadow-sm";
+      banner.innerHTML = "🟢 營業中 (Ouvert) — 營業時間：週一至週六 09:00 - 20:00";
+    } else {
+      banner.className = "bg-red-500 text-white text-center py-1.5 px-4 text-xs font-bold transition-all shadow-sm";
+      banner.innerHTML = "🔴 非營業時間 (Fermé) — 營業時間為週一至週六 09:00 - 20:00，暫不接受下單";
+    }
+  }
+
+  // 🌟 自動切換結算按鈕的樣式與可用性
+  if (checkoutBtn) {
+    if (isOpen) {
+      checkoutBtn.disabled = false;
+      checkoutBtn.className = "bg-green-500 hover:bg-green-600 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow active:scale-95 transition";
+      checkoutBtn.innerText = "Valider / 結算";
+    } else {
+      checkoutBtn.disabled = true;
+      checkoutBtn.className = "bg-gray-500 text-gray-200 text-xs font-bold px-4 py-2.5 rounded-xl shadow cursor-not-allowed opacity-80";
+      checkoutBtn.innerText = "Fermé / 暫停營業";
+    }
   }
 }
 
@@ -330,6 +339,10 @@ function updateCart(id, delta) {
 }
 
 function openCheckoutModal() {
+  if (!checkIsBusinessOpen()) {
+    alert("❌ Désolé, nous sommes actuellement fermés !\n抱歉，目前為非營業時間（營業時間：週一至週六 09:00 - 20:00），暫不接受下單！");
+    return;
+  }
   if (Object.keys(cart).length === 0) return alert('Votre panier est vide ! / 購物車是空的！');
   document.getElementById('checkout-modal').classList.remove('hidden');
 }
@@ -353,9 +366,9 @@ function saveOrderToLocal(order) {
 }
 
 async function submitOrder() {
-  // 🔒 檢查是否在營業時間內
   if (!checkIsBusinessOpen()) {
     alert("❌ Désolé, nous sommes actuellement fermés !\n抱歉，目前為非營業時間（營業時間：週一至週六 09:00 - 20:00），暫不接受下單！");
+    closeCheckoutModal();
     return;
   }
 
@@ -460,7 +473,7 @@ async function submitOrder() {
     if (submitBtn) {
       submitBtn.disabled = false;
       submitBtn.classList.remove('opacity-50', 'cursor-not-allowed');
-      submitBtn.innerText = 'Confirmer / 提交訂單';
+      submitBtn.innerText = 'Valider / 結算';
     }
   }
 }
@@ -1143,7 +1156,6 @@ window.addEventListener('DOMContentLoaded', () => {
   fetchMenu();
   checkUrlAdminParam();
   
-  // 🌟 初始化頂部營業狀態，並每分鐘自動更新一次
   updateBusinessStatusBar();
   setInterval(updateBusinessStatusBar, 60000);
 });
