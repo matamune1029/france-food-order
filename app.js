@@ -5,7 +5,7 @@ const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 // 🏪 店家設定
 const STORE_CONFIG = {
   // 將店家 WhatsApp 號碼改為香港號碼（格式：國家區號 852 + 電話號碼，不含 + 號或空格）
-  whatsappNumber: "85201234567", 
+  whatsappNumber: "85292773583", 
   storeName: "Cici Cuisine"
 };
 
