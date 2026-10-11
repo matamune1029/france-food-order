@@ -1,1315 +1,349 @@
-const SUPABASE_URL = 'https://zcivplddxtaqlefrtajr.supabase.co';
-const SUPABASE_KEY = 'sb_publishable_eQG7FVgOU36Z8edfnrf27w_5A7tlNiq';
-const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cici Cuisine - Commande en ligne</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+</head>
+<body class="bg-gray-100 flex flex-col h-screen overflow-hidden font-sans">
 
-const STORE_CONFIG = {
-  whatsappNumber: "85292773583", 
-  storeName: "Cici Cuisine"
-};
+  <!-- 營業狀態即時提示橫幅 -->
+  <div id="business-status-banner"></div>
 
-let cart = {};
-let menuData = [];
-let rawOrders = []; 
-let currentCategory = 'Specialite';
-let currentOrderTab = 'all'; 
-let lastOrderDetails = null;
-let orderChannel = null;
-
-const fixedCategories = [
-  { key: 'Specialite', fr: 'Spécialité', zh: '每日特色' },
-  { key: 'Viandes', fr: 'Viandes', zh: '葷菜' },
-  { key: 'Seafood', fr: 'Poissons/Mer', zh: '海鮮類' },
-  { key: 'Beef', fr: 'Bœuf', zh: '牛肉類' },
-  { key: 'Legumes', fr: 'Légumes', zh: '素菜' },
-  { key: 'Staple', fr: 'Riz/Nouilles', zh: '主食' }
-];
-
-// ⏰ 檢查是否在營業時間內（週一至週六 09:00 - 20:00 法國巴黎時間）
-function checkIsBusinessOpen() {
-  try {
-    const now = new Date();
-    const formatter = new Intl.DateTimeFormat('en-US', {
-      timeZone: 'Europe/Paris',
-      weekday: 'short',
-      hour: 'numeric',
-      minute: 'numeric',
-      hour12: false
-    });
-    
-    const parts = formatter.formatToParts(now);
-    let weekday = '';
-    let hour = 0;
-    let minute = 0;
-
-    parts.forEach(p => {
-      if (p.type === 'weekday') weekday = p.value;
-      if (p.type === 'hour') hour = parseInt(p.value, 10);
-      if (p.type === 'minute') minute = parseInt(p.value, 10);
-    });
-
-    if (weekday === 'Sun') return false;
-
-    const totalMinutes = hour * 60 + minute;
-    const openMinutes = 9 * 60;   
-    const closeMinutes = 20 * 60; 
-
-    return totalMinutes >= openMinutes && totalMinutes <= closeMinutes;
-  } catch (e) {
-    console.error('Time check error:', e);
-    return true; 
-  }
-}
-
-// 🌐 更新網頁頂部狀態與結算按鈕狀態
-function updateBusinessStatusBar() {
-  const banner = document.getElementById('business-status-banner');
-  const checkoutBtn = document.getElementById('checkout-btn');
-  const isOpen = checkIsBusinessOpen();
-
-  if (banner) {
-    if (isOpen) {
-      banner.className = "bg-green-500 text-white text-center py-1.5 px-4 text-xs font-bold transition-all shadow-sm";
-      banner.innerHTML = "🟢 營業中 (Ouvert) — 營業時間：週一至週六 09:00 - 20:00";
-    } else {
-      banner.className = "bg-red-500 text-white text-center py-1.5 px-4 text-xs font-bold transition-all shadow-sm";
-      banner.innerHTML = "🔴 非營業時間 (Fermé) — 營業時間為週一至週六 09:00 - 20:00，暫不接受下單";
-    }
-  }
-
-  // 🌟 自動切換結算按鈕的樣式與可用性
-  if (checkoutBtn) {
-    if (isOpen) {
-      checkoutBtn.disabled = false;
-      checkoutBtn.className = "bg-green-500 hover:bg-green-600 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow active:scale-95 transition";
-      checkoutBtn.innerText = "Valider / 結算";
-    } else {
-      checkoutBtn.disabled = true;
-      checkoutBtn.className = "bg-gray-500 text-gray-200 text-xs font-bold px-4 py-2.5 rounded-xl shadow cursor-not-allowed opacity-80";
-      checkoutBtn.innerText = "Fermé / 暫停營業";
-    }
-  }
-}
-
-// 🔊 鈴聲 1：顧客下單成功提示音
-function playOrderSuccessSound() {
-  try {
-    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    const now = audioCtx.currentTime;
-
-    const osc1 = audioCtx.createOscillator();
-    const gain1 = audioCtx.createGain();
-    osc1.type = 'sine';
-    osc1.frequency.setValueAtTime(587.33, now); 
-    gain1.gain.setValueAtTime(0.3, now);
-    gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
-    osc1.connect(gain1);
-    gain1.connect(audioCtx.destination);
-    osc1.start(now);
-    osc1.stop(now + 0.2);
-
-    const osc2 = audioCtx.createOscillator();
-    const gain2 = audioCtx.createGain();
-    osc2.type = 'sine';
-    osc2.frequency.setValueAtTime(880, now + 0.15); 
-    gain2.gain.setValueAtTime(0.3, now + 0.15);
-    gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
-    osc2.connect(gain2);
-    gain2.connect(audioCtx.destination);
-    osc2.start(now + 0.15);
-    osc2.stop(now + 0.4);
-  } catch (e) {
-    console.log('Audio error:', e);
-  }
-}
-
-// 🔊 鈴聲 2：點擊 WhatsApp 提示音
-function playWhatsappClickSound() {
-  try {
-    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    const now = audioCtx.currentTime;
-
-    const osc = audioCtx.createOscillator();
-    const gain = audioCtx.createGain();
-    osc.type = 'triangle';
-    osc.frequency.setValueAtTime(440, now); 
-    osc.frequency.exponentialRampToValueAtTime(659.25, now + 0.15); 
-    
-    gain.gain.setValueAtTime(0.3, now);
-    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
-    
-    osc.connect(gain);
-    gain.connect(audioCtx.destination);
-    osc.start(now);
-    osc.stop(now + 0.25);
-  } catch (e) {
-    console.log('Audio error:', e);
-  }
-}
-
-// 🔊 鈴聲 3：後台專屬「新訂單急促提醒鈴聲」
-function playAdminNewOrderSound() {
-  try {
-    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    const now = audioCtx.currentTime;
-
-    [0, 0.15, 0.3].forEach((delay, index) => {
-      const osc = audioCtx.createOscillator();
-      const gain = audioCtx.createGain();
-      osc.type = 'square';
-      osc.frequency.setValueAtTime(index === 2 ? 1046.5 : 783.99, now + delay); 
-      
-      gain.gain.setValueAtTime(0.2, now + delay);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + delay + 0.12);
-      
-      osc.connect(gain);
-      gain.connect(audioCtx.destination);
-      osc.start(now + delay);
-      osc.stop(now + delay + 0.12);
-    });
-  } catch (e) {
-    console.log('Admin Audio error:', e);
-  }
-}
-
-function normalizeCategory(rawCat, nameZh = '', nameFr = '') {
-  const cat = (rawCat || '').toString().toLowerCase().trim();
-  const zh = (nameZh || '').toString().toLowerCase();
-  const fr = (nameFr || '').toString().toLowerCase();
-
-  if (cat.includes('特色') || cat.includes('每日') || cat.includes('spécialité') || cat.includes('specialite') || cat.includes('special')) {
-    return 'Specialite';
-  }
-  if (cat.includes('海鮮') || cat.includes('海鲜') || cat.includes('魚') || cat.includes('鱼') || cat.includes('蝦') || cat.includes('虾') || 
-      cat.includes('poisson') || cat.includes('crevette') || cat.includes('mer') || zh.includes('魚') || zh.includes('鱼') || zh.includes('蝦')) {
-    return 'Seafood';
-  }
-  if (cat.includes('牛肉') || cat.includes('牛') || cat.includes('bœuf') || cat.includes('boeuf') || cat.includes('beef') || zh.includes('牛')) {
-    return 'Beef';
-  }
-  if (cat.includes('素') || cat.includes('légume') || cat.includes('legume')) {
-    return 'Legumes';
-  }
-  if (cat.includes('主食') || cat.includes('riz') || cat.includes('nouille') || cat.includes('rice') || cat.includes('noodle')) {
-    return 'Staple';
-  }
-  return 'Viandes';
-}
-
-async function fetchMenu() {
-  try {
-    const { data, error } = await supabaseClient.from('menu_items').select('*');
-    if (error) console.error('Menu Fetch Error:', error);
-    menuData = data || [];
-    renderCategoryBar();
-    renderMenu();
-  } catch (err) {
-    console.error('Fetch Menu Failure:', err);
-    const container = document.getElementById('menu-container');
-    if (container) container.innerHTML = '<div class="text-center text-red-500 py-10">Erreur de chargement / 菜單載入失敗</div>';
-  }
-}
-
-function renderCategoryBar() {
-  const categoryContainer = document.getElementById('category-bar');
-  if (!categoryContainer) return;
-
-  categoryContainer.innerHTML = fixedCategories.map(cat => {
-    const isSelected = currentCategory === cat.key;
-    return `
-      <button type="button" onclick="switchCategory('${cat.key}')" 
-        class="w-full py-3 px-1 text-center border-b border-gray-300 transition ${isSelected ? 'bg-white text-green-600 font-bold border-l-4 border-l-green-500' : 'text-gray-600'}">
-        <div class="text-xs font-bold leading-tight">${cat.fr}</div>
-        <div class="text-[10px] text-gray-400 font-normal mt-0.5">${cat.zh}</div>
-      </button>
-    `;
-  }).join('');
-}
-
-function switchCategory(catKey) {
-  currentCategory = catKey;
-  renderCategoryBar();
-  renderMenu();
-}
-
-function renderMenu() {
-  const container = document.getElementById('menu-container');
-  if (!container) return;
-
-  let listToDisplay = menuData.filter(i => {
-    return normalizeCategory(i.category, i.name_zh, i.name_fr) === currentCategory;
-  });
-
-  listToDisplay.sort((a, b) => {
-    const stockA = (a && typeof a.stock === 'number') ? a.stock : 99;
-    const stockB = (b && typeof b.stock === 'number') ? b.stock : 99;
-
-    const availA = (a.is_available !== false && stockA > 0) ? 1 : 0;
-    const availB = (b.is_available !== false && stockB > 0) ? 1 : 0;
-
-    if (availA !== availB) {
-      return availB - availA;
-    }
-    return (a.sort_order || 99) - (b.sort_order || 99);
-  });
-
-  if (listToDisplay.length === 0) {
-    container.innerHTML = '<div class="text-center text-gray-400 py-10">Aucun plat / 暫無菜品</div>';
-    return;
-  }
-
-  container.innerHTML = listToDisplay.map(item => {
-    const maxStock = (item && typeof item.stock === 'number') ? item.stock : 99;
-    const currentCartQty = cart[item.id] || 0;
-
-    const isAvailable = (item.is_available !== false) && (maxStock > 0);
-    const isMaxReached = currentCartQty >= maxStock;
-
-    const imgHtml = item.image_url 
-      ? `<img src="${item.image_url}" class="w-16 h-16 rounded-lg object-cover flex-shrink-0" alt="${item.name_zh}">`
-      : `<div class="w-16 h-16 rounded-lg bg-orange-50 border border-orange-100 flex items-center justify-center text-orange-400 font-bold text-xs flex-shrink-0">🍲</div>`;
-
-    return `
-      <div class="bg-white p-3 rounded-xl shadow-sm flex items-center gap-3 border border-gray-100 ${!isAvailable ? 'opacity-50 grayscale' : ''}">
-        <div onclick="openDishDetailModal('${item.id}')" class="cursor-pointer flex-shrink-0">
-          ${imgHtml}
-        </div>
-        
-        <div class="flex-1 min-w-0">
-          <div onclick="openDishDetailModal('${item.id}')" class="font-bold text-gray-800 text-xs sm:text-sm leading-tight line-clamp-2 break-words cursor-pointer hover:text-green-600 transition">
-            ${item.name_fr || ''}
-            ${!isAvailable ? '<span class="ml-1 text-[10px] bg-gray-200 text-gray-600 px-1 py-0.5 rounded font-normal inline-block">Épuisé</span>' : ''}
-          </div>
-          <div class="text-xs text-gray-500 font-normal mt-0.5 truncate">${item.name_zh || ''}</div>
-          <div class="flex items-center gap-2 mt-1">
-            <span class="text-green-600 font-extrabold text-base">${item.price || 0} €</span>
-            ${isAvailable ? `<span class="text-[10px] text-orange-600 bg-orange-50 px-1.5 py-0.5 rounded border border-orange-100">Stock: ${maxStock}</span>` : ''}
-          </div>
-        </div>
-        
-        <div class="flex items-center gap-1.5 flex-shrink-0">
-          ${currentCartQty > 0 ? `
-            <button type="button" onclick="updateCart('${item.id}', -1)" class="w-7 h-7 bg-gray-100 text-gray-700 rounded-full font-bold flex items-center justify-center active:scale-90">-</button>
-            <span class="text-sm font-bold w-4 text-center">${currentCartQty}</span>
-          ` : ''}
-          <button type="button" 
-            ${(!isAvailable || isMaxReached) ? 'disabled' : `onclick="updateCart('${item.id}', 1)"`} 
-            class="w-7 h-7 ${isAvailable && !isMaxReached ? 'bg-green-500 text-white shadow-md active:scale-90' : 'bg-gray-300 text-gray-500 cursor-not-allowed'} rounded-full font-bold flex items-center justify-center">
-            +
-          </button>
+  <!-- 1. 頂部店鋪招牌 -->
+  <header class="bg-gradient-to-r from-red-600 to-orange-500 text-white p-4 shadow-md flex-shrink-0 select-none">
+    <div class="flex justify-between items-start">
+      <div>
+        <h1 onclick="handleSecretClick()" class="text-xl font-bold tracking-wide cursor-pointer active:opacity-80">Cici Cuisine</h1>
+        <div class="space-y-0.5 mt-1">
+          <p class="text-xs opacity-90">🕒 Livraison | 配送</p>
+          <p class="text-[11px] opacity-80 font-medium">🕒 12:00 - 14:00 (Lundi - Samedi)</p>
         </div>
       </div>
-    `;
-  }).join('');
-}
-
-function updateCart(id, delta) {
-  const item = menuData.find(i => i.id === id);
-  const maxStock = (item && typeof item.stock === 'number') ? item.stock : 99;
-
-  const currentQty = cart[id] || 0;
-  if (delta > 0 && currentQty >= maxStock) {
-    alert(`Stock insuffisant ! Il ne reste que ${maxStock} portion(s). / 庫存不足，該菜品僅剩 ${maxStock} 份！`);
-    return;
-  }
-
-  cart[id] = currentQty + delta;
-  if (cart[id] <= 0) delete cart[id];
-  renderMenu();
-
-  let total = 0;
-  let count = 0;
-  for (let itemId in cart) {
-    const menuItem = menuData.find(i => i.id === itemId);
-    if (menuItem) {
-      total += (menuItem.price || 0) * cart[itemId];
-      count += cart[itemId];
-    }
-  }
-
-  document.getElementById('total-price').innerText = total.toFixed(2);
-  document.getElementById('modal-total-price').innerText = total.toFixed(2);
-  
-  const badge = document.getElementById('cart-badge');
-  if (count > 0) {
-    badge.innerText = count;
-    badge.classList.remove('hidden');
-  } else {
-    badge.classList.add('hidden');
-  }
-}
-
-function openCheckoutModal() {
-  if (!checkIsBusinessOpen()) {
-    alert("❌ Désolé, nous sommes actuellement fermés !\n抱歉，目前為非營業時間（營業時間：週一至週六 09:00 - 20:00），暫不接受下單！");
-    return;
-  }
-  if (Object.keys(cart).length === 0) return alert('Votre panier est vide ! / 購物車是空的！');
-  document.getElementById('checkout-modal').classList.remove('hidden');
-}
-
-function closeCheckoutModal() {
-  document.getElementById('checkout-modal').classList.add('hidden');
-}
-
-function saveOrderToLocal(order) {
-  try {
-    let history = JSON.parse(localStorage.getItem('cici_order_history') || '[]');
-    history.unshift({
-      ...order,
-      createdAt: new Date().toLocaleString()
-    });
-    if (history.length > 20) history = history.slice(0, 20);
-    localStorage.setItem('cici_order_history', JSON.stringify(history));
-  } catch (e) {
-    console.error('Save local order error:', e);
-  }
-}
-
-async function submitOrder() {
-  if (!checkIsBusinessOpen()) {
-    alert("❌ Désolé, nous sommes actuellement fermés !\n抱歉，目前為非營業時間（營業時間：週一至週六 09:00 - 20:00），暫不接受下單！");
-    closeCheckoutModal();
-    return;
-  }
-
-  const submitBtn = document.querySelector('#checkout-modal button[onclick="submitOrder()"]');
-  
-  try {
-    const dateSelect = document.getElementById('cust-date').value;
-    const timeSelect = document.getElementById('cust-time').value;
-    const name = document.getElementById('cust-name').value.trim();
-    const phone = document.getElementById('cust-phone').value.trim();
-    const address = document.getElementById('cust-address').value.trim();
-    const note = document.getElementById('cust-note').value.trim();
-
-    if (!dateSelect) return alert('Veuillez choisir le jour de livraison ! / 請選擇配送日期！');
-    if (!timeSelect) return alert('Veuillez choisir le créneau horaire ! / 請選擇配送時段！');
-    if (!name) return alert('Veuillez entrer votre nom ! / 請填寫姓名！');
-
-    const cleanPhone = phone.replace(/[\s\.\-\(\)]/g, '');
-    const frPhoneRegex = /^(?:(?:\+33|0033)[1-9]|0[1-9])\d{8}$/;
-    if (!frPhoneRegex.test(cleanPhone)) {
-      return alert('Veuillez entrer un numéro de téléphone français valide (ex: 0612345678) ! / 請填寫有效的法國手機號碼！');
-    }
-
-    if (!address) return alert('Veuillez entrer votre adresse de livraison ! / 請填寫送餐地址！');
-
-    if (submitBtn) {
-      submitBtn.disabled = true;
-      submitBtn.classList.add('opacity-50', 'cursor-not-allowed');
-      submitBtn.innerText = 'Traitement en cours... / 提交中...';
-    }
-
-    const items = Object.keys(cart).map(id => {
-      const item = menuData.find(i => i.id === id);
-      return { 
-        id,
-        name_fr: item ? item.name_fr : 'Plat', 
-        name_zh: item ? item.name_zh : '菜品', 
-        qty: cart[id], 
-        price: item ? item.price : 0 
-      };
-    });
-    
-    const total = parseFloat(document.getElementById('total-price').innerText);
-    const orderId = 'CC-' + Date.now().toString().slice(-6);
-    const deliverySlot = `${dateSelect} - ${timeSelect}`;
-
-    const fullContactInfo = `[${deliverySlot}] ${phone} | Adresse: ${address}${note ? ' | Note: ' + note : ''}`;
-    const dbItems = items.map(i => ({ name: `${i.name_fr} (${i.name_zh})`, qty: i.qty, price: i.price }));
-
-    const { data, error } = await supabaseClient.from('orders').insert([
-      { customer_name: name, phone: fullContactInfo, items: dbItems, total_price: total, status: 'pending' }
-    ]).select();
-
-    if (error) {
-      console.error('Supabase Error:', error);
-      alert('Échec / 數據庫寫入錯誤: ' + error.message);
-      return;
-    }
-
-    const realDbId = data[0].id;
-
-    for (let cartItem of items) {
-      const targetDish = menuData.find(m => m.id === cartItem.id);
-      if (targetDish) {
-        const currentStock = (typeof targetDish.stock === 'number') ? targetDish.stock : 99;
-        const newStock = Math.max(0, currentStock - cartItem.qty);
-        const newAvailable = newStock > 0 ? (targetDish.is_available !== false) : false;
-
-        await supabaseClient
-          .from('menu_items')
-          .update({ stock: newStock, is_available: newAvailable })
-          .eq('id', cartItem.id);
-
-        targetDish.stock = newStock;
-        targetDish.is_available = newAvailable;
-      }
-    }
-
-    lastOrderDetails = { dbId: realDbId, orderId, deliverySlot, name, phone, address, note, items, total };
-    saveOrderToLocal(lastOrderDetails);
-
-    cart = {};
-    closeCheckoutModal();
-
-    playOrderSuccessSound();
-
-    const whatsappOrderData = {
-      customer_name: name,
-      customer_phone: phone,
-      delivery_address: `${address} (${deliverySlot})${note ? ' - 備註: ' + note : ''}`,
-      items: items.map(i => ({ name: `${i.name_fr} (${i.name_zh})`, quantity: i.qty, price: i.price })),
-      total_price: total
-    };
-    
-    const whatsappUrl = generateWhatsAppLink(whatsappOrderData, orderId);
-    showWhatsAppModal(whatsappUrl, realDbId);
-
-  } catch (err) {
-    console.error('Submission Error:', err);
-    alert('Erreur / 提交過程發生錯誤: ' + err.message);
-  } finally {
-    if (submitBtn) {
-      submitBtn.disabled = false;
-      submitBtn.classList.remove('opacity-50', 'cursor-not-allowed');
-      submitBtn.innerText = 'Valider / 結算';
-    }
-  }
-}
-
-function showReceiptModal(order) {
-  document.getElementById('receipt-id').innerText = '#' + order.orderId;
-  document.getElementById('receipt-slot').innerText = order.deliverySlot;
-  document.getElementById('receipt-name').innerText = order.name;
-  document.getElementById('receipt-phone').innerText = order.phone;
-  document.getElementById('receipt-address').innerText = order.address;
-  document.getElementById('receipt-total').innerText = order.total.toFixed(2);
-
-  const itemsContainer = document.getElementById('receipt-items');
-  itemsContainer.innerHTML = order.items.map(i => `
-    <li class="flex justify-between">
-      <span>${i.name_fr} (${i.name_zh}) x${i.qty}</span>
-      <span class="font-bold">${(i.price * i.qty).toFixed(2)} €</span>
-    </li>
-  `).join('');
-
-  document.getElementById('receipt-modal').classList.remove('hidden');
-}
-
-async function downloadReceiptAsImage() {
-  const receiptCard = document.getElementById('receipt-card');
-  if (!receiptCard) return;
-
-  try {
-    const canvas = await html2canvas(receiptCard, {
-      scale: 2,
-      backgroundColor: '#f9fafb'
-    });
-
-    const imageDataUrl = canvas.toDataURL('image/png');
-    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
-
-    if (isIOS) {
-      showImagePreviewOverlay(imageDataUrl);
-    } else {
-      const link = document.createElement('a');
-      link.href = imageDataUrl;
-      link.download = `Receipt_${lastOrderDetails ? lastOrderDetails.orderId : 'CC-0001'}.png`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-    }
-  } catch (err) {
-    console.error('Generate image error:', err);
-    alert('圖片生成失敗，請手動截圖保存！');
-  }
-}
-
-function showImagePreviewOverlay(imgUrl) {
-  const overlay = document.createElement('div');
-  overlay.className = 'fixed inset-0 bg-black/80 z-[60] flex flex-col items-center justify-center p-4 animate-fade-in';
-  overlay.innerHTML = `
-    <div class="text-white text-center mb-3 space-y-1">
-      <div class="text-sm font-bold">📸 請 App/手機 內「長按圖片」保存至相冊</div>
-      <div class="text-xs opacity-75">Appuyez longuement pour enregistrer l'image</div>
-    </div>
-    <img src="${imgUrl}" class="max-w-full max-h-[70vh] rounded-xl shadow-2xl border border-white/20 object-contain">
-    <button type="button" onclick="this.parentElement.remove()" class="mt-4 bg-white/20 hover:bg-white/30 text-white text-xs font-bold px-6 py-2 rounded-full border border-white/40">
-      Fermer / 關閉
-    </button>
-  `;
-  document.body.appendChild(overlay);
-}
-
-function copyReceiptText() {
-  if (!lastOrderDetails) return;
-  const o = lastOrderDetails;
-  const itemText = o.items.map(i => `- ${i.name_fr} (${i.name_zh}) x${i.qty}`).join('\n');
-  const text = `🧾 【Cici Cuisine 訂單憑證 #${o.orderId}】\n📅 配送時間: ${o.deliverySlot}\n👤 姓名: ${o.name}\n📞 電話: ${o.phone}\n📍 地址: ${o.address}\n\n🍲 訂購餐點:\n${itemText}\n\n💰 總計: ${o.total.toFixed(2)} €`;
-
-  navigator.clipboard.writeText(text).then(() => {
-    alert('📋 訂單明細已複製到剪貼板！可以直接發給群主微信。');
-  }).catch(() => {
-    alert('複製失敗，請直接截圖保存。');
-  });
-}
-
-function closeReceiptModal() {
-  document.getElementById('receipt-modal').classList.add('hidden');
-  renderMenu();
-}
-
-function openHistoryModal() {
-  const modal = document.getElementById('history-modal');
-  const container = document.getElementById('history-list');
-  if (!modal || !container) return;
-
-  let history = [];
-  try {
-    history = JSON.parse(localStorage.getItem('cici_order_history') || '[]');
-  } catch (e) {
-    history = [];
-  }
-
-  if (history.length === 0) {
-    container.innerHTML = '<div class="text-center text-gray-400 py-8 text-xs">Aucune commande récente / 尚無歷史訂單紀錄</div>';
-  } else {
-    container.innerHTML = history.map((o, index) => {
-      const itemsText = o.items ? o.items.map(i => `${i.name_fr} x${i.qty}`).join(', ') : '';
-      
-      const whatsappOrderData = {
-        customer_name: o.name,
-        customer_phone: o.phone,
-        delivery_address: `${o.address} (${o.deliverySlot})${o.note ? ' - 備註: ' + o.note : ''}`,
-        items: o.items ? o.items.map(i => ({ name: `${i.name_fr} (${i.name_zh})`, quantity: i.qty, price: i.price })) : [],
-        total_price: o.total
-      };
-      const whatsappUrl = generateWhatsAppLink(whatsappOrderData, o.orderId);
-      const targetDbId = o.dbId || '';
-
-      return `
-        <div class="bg-gray-50 p-3.5 rounded-xl border border-gray-200 text-xs space-y-2 shadow-sm">
-          <div class="flex justify-between items-center font-bold text-gray-800 border-b pb-1">
-            <span class="text-green-600">#${o.orderId}</span>
-            <span class="text-gray-400 text-[10px] font-normal">${o.createdAt || ''}</span>
-          </div>
-          <div class="text-gray-600">📅 <strong>配送:</strong> ${o.deliverySlot}</div>
-          <div class="text-gray-600 truncate">🍲 <strong>明細:</strong> ${itemsText}</div>
-          <div class="flex justify-between items-center pt-1 font-bold border-t border-gray-100">
-            <span class="text-gray-500">總計: <span class="text-green-600 text-sm">${(o.total || 0).toFixed(2)} €</span></span>
-            
-            <a href="${whatsappUrl}" target="_blank" onclick="markWhatsappClicked('${targetDbId}')"
-               class="bg-green-500 hover:bg-green-600 text-white px-3 py-1.5 rounded-lg font-bold flex items-center space-x-1 shadow-sm transition text-[11px]">
-              <span>📱 傳送 WhatsApp</span>
-            </a>
-          </div>
-        </div>
-      `;
-    }).join('');
-  }
-
-  modal.classList.remove('hidden');
-}
-
-function closeHistoryModal() {
-  const modal = document.getElementById('history-modal');
-  if (modal) modal.classList.add('hidden');
-}
-
-let secretClickCount = 0;
-let secretClickTimer = null;
-
-function handleSecretClick() {
-  secretClickCount++;
-  clearTimeout(secretClickTimer);
-  secretClickTimer = setTimeout(() => { secretClickCount = 0; }, 3000);
-
-  if (secretClickCount >= 5) {
-    secretClickCount = 0;
-    const btn = document.getElementById('admin-btn');
-    if (btn) btn.classList.remove('hidden');
-    toggleMode(true);
-  }
-}
-
-let isAdminLoggedIn = false;
-
-function toggleMode(forceCheck = false) {
-  const adminView = document.getElementById('admin-view');
-  const customerView = document.getElementById('customer-view');
-
-  if ((adminView.classList.contains('hidden') || forceCheck) && !isAdminLoggedIn) {
-    const password = prompt("🔐 Mot de passe Admin / 請輸入群主管理密碼：");
-    if (password !== "8888") {
-      return alert("❌ Mot de passe incorrect / 密碼錯誤！");
-    }
-    isAdminLoggedIn = true;
-  }
-
-  adminView.classList.toggle('hidden');
-  customerView.classList.toggle('hidden');
-
-  if (!adminView.classList.contains('hidden')) {
-    fetchOrders();
-    initAdminRealtimeListener(); 
-  } else {
-    if (orderChannel) {
-      supabaseClient.removeChannel(orderChannel);
-      orderChannel = null;
-    }
-  }
-}
-
-function initAdminRealtimeListener() {
-  if (orderChannel) return;
-
-  orderChannel = supabaseClient
-    .channel('admin-orders-channel')
-    .on(
-      'postgres_changes',
-      { event: 'INSERT', schema: 'public', table: 'orders' },
-      (payload) => {
-        console.log('🔔 偵測到新訂單進來：', payload.new);
-        playAdminNewOrderSound();
-        fetchOrders();
-      }
-    )
-    .subscribe();
-}
-
-function checkUrlAdminParam() {
-  const urlParams = new URLSearchParams(window.location.search);
-  if (urlParams.get('admin') === 'true') {
-    const btn = document.getElementById('admin-btn');
-    if (btn) btn.classList.remove('hidden');
-  }
-}
-
-function switchAdminTab(tab) {
-  const ordersTab = document.getElementById('admin-orders-tab');
-  const menuTab = document.getElementById('admin-menu-tab');
-  const ordersBtn = document.getElementById('tab-orders-btn');
-  const menuBtn = document.getElementById('tab-menu-btn');
-
-  if (tab === 'orders') {
-    ordersTab.classList.remove('hidden');
-    menuTab.classList.add('hidden');
-    ordersBtn.className = "flex-1 py-2 rounded-lg bg-white shadow text-gray-800 transition";
-    menuBtn.className = "flex-1 py-2 rounded-lg text-gray-500 transition";
-    fetchOrders();
-  } else {
-    ordersTab.classList.add('hidden');
-    menuTab.classList.remove('hidden');
-    menuBtn.className = "flex-1 py-2 rounded-lg bg-white shadow text-gray-800 transition";
-    ordersBtn.className = "flex-1 py-2 rounded-lg text-gray-500 transition";
-    fetchAdminMenu();
-  }
-}
-
-async function fetchOrders() {
-  const container = document.getElementById('order-list');
-  if (!container) return;
-
-  container.innerHTML = '<div class="text-gray-400 text-xs text-center py-4">Chargement des commandes... / 讀取訂單中...</div>';
-
-  try {
-    const { data, error } = await supabaseClient
-      .from('orders')
-      .select('*')
-      .order('created_at', { ascending: false });
-
-    if (error) {
-      console.error('Fetch Orders Error:', error);
-      container.innerHTML = `<div class="text-red-500 text-xs text-center py-4">讀取失敗: ${error.message}</div>`;
-      return;
-    }
-
-    rawOrders = data || [];
-    applyOrderFilters();
-
-  } catch (err) {
-    console.error('Unexpected Error:', err);
-    container.innerHTML = `<div class="text-red-500 text-xs text-center py-4">系統異常: ${err.message}</div>`;
-  }
-}
-
-function filterOrderTab(tabKey) {
-  currentOrderTab = tabKey;
-
-  const btnAll = document.getElementById('order-filter-all');
-  const btnToday = document.getElementById('order-filter-today');
-  const btnTomorrow = document.getElementById('order-filter-tomorrow');
-  const datePicker = document.getElementById('order-date-picker');
-
-  if (datePicker) datePicker.value = '';
-
-  const activeClass = "flex-1 py-1.5 rounded-lg bg-white text-green-700 shadow-sm transition font-bold";
-  const inactiveClass = "flex-1 py-1.5 rounded-lg text-gray-500 transition font-normal";
-
-  if (btnAll) btnAll.className = tabKey === 'all' ? activeClass : inactiveClass;
-  if (btnToday) btnToday.className = tabKey === 'today' ? activeClass : inactiveClass;
-  if (btnTomorrow) btnTomorrow.className = tabKey === 'tomorrow' ? activeClass : inactiveClass;
-
-  applyOrderFilters();
-}
-
-async function updateOrderStatus(orderId, newStatus) {
-  const { error } = await supabaseClient
-    .from('orders')
-    .update({ status: newStatus })
-    .eq('id', orderId);
-
-  if (error) {
-    alert('❌ 修改狀態失敗: ' + error.message);
-  } else {
-    const target = rawOrders.find(o => o.id === orderId);
-    if (target) target.status = newStatus;
-    applyOrderFilters();
-  }
-}
-
-function applyOrderFilters() {
-  const container = document.getElementById('order-list');
-  if (!container) return;
-
-  const searchKeyword = (document.getElementById('order-search-input')?.value || '').toLowerCase().trim();
-  const datePickerVal = document.getElementById('order-date-picker')?.value;
-  const statusFilterVal = document.getElementById('order-status-filter')?.value || 'all';
-
-  let filtered = [...rawOrders];
-
-  if (statusFilterVal !== 'all') {
-    filtered = filtered.filter(o => (o.status || 'pending') === statusFilterVal);
-  }
-
-  if (datePickerVal) {
-    filtered = filtered.filter(o => {
-      if (!o.created_at) return false;
-      const orderDateStr = new Date(o.created_at).toISOString().split('T')[0];
-      return orderDateStr === datePickerVal;
-    });
-  } else if (currentOrderTab === 'today') {
-    filtered = filtered.filter(o => {
-      const phoneStr = (o.phone || '').toLowerCase();
-      return phoneStr.includes('aujourd') || phoneStr.includes('當天') || phoneStr.includes('当天');
-    });
-  } else if (currentOrderTab === 'tomorrow') {
-    filtered = filtered.filter(o => {
-      const phoneStr = (o.phone || '').toLowerCase();
-      return phoneStr.includes('demain') || phoneStr.includes('明天');
-    });
-  }
-
-  if (searchKeyword) {
-    filtered = filtered.filter(o => {
-      const nameMatch = (o.customer_name || '').toLowerCase().includes(searchKeyword);
-      const phoneMatch = (o.phone || '').toLowerCase().includes(searchKeyword);
-      const itemMatch = Array.isArray(o.items) && o.items.some(i => (i.name || '').toLowerCase().includes(searchKeyword));
-      return nameMatch || phoneMatch || itemMatch;
-    });
-  }
-
-  const validOrders = filtered.filter(o => (o.status || 'pending') !== 'cancelled');
-  const totalMoney = validOrders.reduce((sum, o) => sum + (parseFloat(o.total_price) || 0), 0);
-  
-  const moneyElem = document.getElementById('stat-total-money');
-  const countElem = document.getElementById('stat-order-count');
-  if (moneyElem) moneyElem.innerText = totalMoney.toFixed(2);
-  if (countElem) countElem.innerText = validOrders.length;
-
-  if (filtered.length === 0) {
-    container.innerHTML = '<div class="text-gray-400 text-xs text-center py-6">Aucune commande trouvée / 查無訂單</div>';
-    return;
-  }
-
-  const statusBadgeMap = {
-    'pending': '<span class="bg-amber-100 text-amber-700 px-2 py-0.5 rounded text-[10px] font-bold">⏳ 待處理</span>',
-    'delivering': '<span class="bg-blue-100 text-blue-700 px-2 py-0.5 rounded text-[10px] font-bold">🛵 配送中</span>',
-    'completed': '<span class="bg-green-100 text-green-700 px-2 py-0.5 rounded text-[10px] font-bold">✅ 已送達</span>',
-    'cancelled': '<span class="bg-gray-200 text-gray-500 px-2 py-0.5 rounded text-[10px] font-bold line-through">❌ 已取消</span>'
-  };
-
-  container.innerHTML = filtered.map(o => {
-    const st = o.status || 'pending';
-    const isCancelled = st === 'cancelled';
-    const createdTimeStr = o.created_at ? new Date(o.created_at).toLocaleString() : '';
-
-    const whatsappBadge = o.whatsapp_sent 
-      ? '<span class="bg-green-50 text-green-700 border border-green-200 px-1.5 py-0.5 rounded text-[10px] font-bold">💬 已點擊WA</span>' 
-      : '<span class="bg-gray-100 text-gray-400 px-1.5 py-0.5 rounded text-[10px]">⏳ 未點WA</span>';
-    
-    const itemsList = Array.isArray(o.items) 
-      ? o.items.map(i => `<li class="flex justify-between"><span>${i.name || '菜品'}</span><span class="font-bold">x${i.qty || 1}</span></li>`).join('')
-      : '<li class="text-gray-400">無明細</li>';
-
-    return `
-      <div class="bg-white p-3.5 rounded-xl border-l-4 ${st === 'completed' ? 'border-green-500' : (isCancelled ? 'border-gray-300 opacity-60' : 'border-orange-500')} shadow-sm space-y-2">
-        <div class="flex justify-between items-start font-bold text-gray-800">
-          <div>
-            <div class="flex items-center gap-2">
-              <span class="text-sm">👤 ${o.customer_name || '匿名顧客'}</span>
-              ${statusBadgeMap[st] || statusBadgeMap['pending']}
-              ${whatsappBadge}
-            </div>
-            <div class="text-[10px] text-gray-400 font-normal mt-0.5">${createdTimeStr}</div>
-          </div>
-          <span class="text-green-600 text-base font-black ${isCancelled ? 'line-through text-gray-400' : ''}">${(o.total_price || 0).toFixed(2)} €</span>
-        </div>
-
-        <div class="text-xs font-medium text-orange-700 bg-orange-50 p-2 rounded-lg border border-orange-100 break-all leading-relaxed">
-          📍 ${o.phone || '無聯繫資訊'}
-        </div>
-
-        <ul class="text-xs bg-gray-50 p-2.5 rounded-lg border space-y-1 text-gray-700">
-          ${itemsList}
-        </ul>
-
-        <div class="flex justify-between items-center pt-2 border-t text-xs">
-          <div class="flex items-center gap-1">
-            <span class="text-[10px] text-gray-400 font-bold">狀態:</span>
-            <select onchange="updateOrderStatus('${o.id}', this.value)" class="text-[11px] border rounded p-1 font-bold bg-gray-50 text-gray-700">
-              <option value="pending" ${st === 'pending' ? 'selected' : ''}>⏳ 待處理</option>
-              <option value="delivering" ${st === 'delivering' ? 'selected' : ''}>🛵 配送中</option>
-              <option value="completed" ${st === 'completed' ? 'selected' : ''}>✅ 已送達</option>
-              <option value="cancelled" ${st === 'cancelled' ? 'selected' : ''}>❌ 已取消</option>
-            </select>
-          </div>
-
-          <div class="flex items-center gap-1.5">
-            ${isCancelled ? `
-              <button type="button" onclick="deleteOrderFromSupabase('${o.id}', '${o.customer_name}')" class="bg-red-100 hover:bg-red-200 text-red-600 text-[10px] px-2 py-1 rounded font-bold transition">
-                🗑️ 永久刪除
-              </button>
-            ` : ''}
-            <button type="button" onclick="copyOrderForDriver('${o.customer_name}', '${o.phone}', '${o.total_price}')" class="bg-gray-100 hover:bg-gray-200 text-gray-700 text-[10px] px-2 py-1 rounded font-bold transition">
-              📋 派送小票
-            </button>
-          </div>
-        </div>
-      </div>
-    `;
-  }).join('');
-}
-
-function copyOrderForDriver(name, contactInfo, total) {
-  const text = `🛵 【外賣派送憑證】\n👤 客戶: ${name}\n📍 聯繫/地址: ${contactInfo}\n💰 應收金額: ${total} €`;
-  navigator.clipboard.writeText(text).then(() => {
-    alert('📋 已成功複製派送資訊！可以貼給司機或外賣員。');
-  }).catch(() => {
-    alert('複製失敗，請手動複製。');
-  });
-}
-
-async function fetchAdminMenu() {
-  const container = document.getElementById('admin-menu-list');
-  if (!container) return;
-
-  if (!menuData || menuData.length === 0) {
-    const { data } = await supabaseClient.from('menu_items').select('*');
-    if (data) menuData = data;
-  }
-
-  if (!menuData || menuData.length === 0) {
-    container.innerHTML = '<div class="text-gray-400 text-xs text-center py-4">Aucun plat / 暫無菜品</div>';
-    return;
-  }
-
-  const categoryPriority = {
-    'Specialite': 1, 'Viandes': 2, 'Seafood': 3, 'Beef': 4, 'Legumes': 5, 'Staple': 6
-  };
-
-  const categoryLabelMap = {
-    'Specialite': '🌟 每日特色', 'Viandes': '🥩 葷菜', 'Seafood': '🐟 海鮮類',
-    'Beef': '🐂 牛肉類', 'Legumes': '🥬 素菜', 'Staple': '🍚 主食'
-  };
-
-  menuData.sort((a, b) => {
-    const catAKey = normalizeCategory(a.category, a.name_zh, a.name_fr);
-    const catBKey = normalizeCategory(b.category, b.name_zh, b.name_fr);
-
-    const priorityA = categoryPriority[catAKey] || 99;
-    const priorityB = categoryPriority[catBKey] || 99;
-
-    if (priorityA !== priorityB) {
-      return priorityA - priorityB;
-    }
-    return (a.sort_order || 99) - (b.sort_order || 99);
-  });
-
-  let lastCategoryKey = null;
-  let htmlContent = '';
-
-  menuData.forEach(item => {
-    const stockVal = (item && typeof item.stock === 'number') ? item.stock : 99;
-    const isAvailable = (item.is_available !== false) && (stockVal > 0);
-    const normKey = normalizeCategory(item.category, item.name_zh, item.name_fr);
-
-    if (normKey !== lastCategoryKey) {
-      lastCategoryKey = normKey;
-      htmlContent += `
-        <div class="pt-3 pb-1 text-xs font-bold text-gray-500 border-b border-gray-200 flex items-center justify-between">
-          <span>${categoryLabelMap[normKey] || '其他分類'}</span>
-        </div>
-      `;
-    }
-
-    const imgThumb = item.image_url 
-      ? `<img src="${item.image_url}" class="w-10 h-10 rounded object-cover mr-2 flex-shrink-0">`
-      : `<div class="w-10 h-10 rounded bg-gray-100 flex items-center justify-center text-xs text-gray-400 mr-2 flex-shrink-0">🍲</div>`;
-
-    htmlContent += `
-      <div class="bg-white p-2.5 rounded-xl border flex justify-between items-center shadow-sm hover:border-gray-300 transition">
-        <div class="flex items-center flex-1 pr-2 min-w-0">
-          ${imgThumb}
-          <div class="min-w-0 flex-1">
-            <div class="font-bold text-gray-800 text-xs truncate">
-              <span class="bg-gray-100 text-gray-600 px-1 py-0.5 rounded mr-1 font-mono">#${item.sort_order || 99}</span>
-              ${item.name_fr || ''} (${item.name_zh || ''})
-            </div>
-            <div class="text-green-600 font-extrabold text-xs mt-0.5 flex items-center gap-2">
-              <span>${item.price || 0} €</span>
-              <span class="text-gray-500 font-normal text-[10px] bg-gray-100 px-1 py-0.5 rounded">庫存: ${stockVal}</span>
-            </div>
-          </div>
-        </div>
-        <div class="flex items-center gap-1 flex-shrink-0">
-          <button type="button" onclick="toggleDishAvailability(event, '${item.id}', ${!isAvailable})" class="px-2 py-1 rounded text-[10px] font-bold transition ${isAvailable ? 'bg-green-100 text-green-700 hover:bg-green-200' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}">
-            ${isAvailable ? 'En vente' : 'Masqué'}
-          </button>
-          <button type="button" onclick="openDishModal('${item.id}')" class="bg-orange-100 text-orange-600 px-2 py-1 rounded text-[10px] font-bold hover:bg-orange-200">
-            Modifier
-          </button>
-          <button type="button" onclick="deleteDish(event, '${item.id}', '${item.name_zh}')" class="bg-red-100 text-red-600 px-2 py-1 rounded text-[10px] font-bold hover:bg-red-200">
-            Suppr.
-          </button>
-        </div>
-      </div>
-    `;
-  });
-
-  container.innerHTML = htmlContent;
-}
-
-async function toggleDishAvailability(event, id, newStatus) {
-  if (event) event.stopPropagation();
-  
-  const { error } = await supabaseClient.from('menu_items').update({ is_available: newStatus }).eq('id', id);
-  if (error) {
-    alert('修改狀態失敗: ' + error.message);
-  } else {
-    const target = menuData.find(m => m.id === id);
-    if (target) target.is_available = newStatus;
-
-    fetchAdminMenu();
-    renderMenu();
-  }
-}
-
-function openDishModal(id = null) {
-  const modal = document.getElementById('dish-modal');
-  const title = document.getElementById('dish-modal-title');
-  if (!modal) return;  
-  const sortInput = document.getElementById('dish-sort');
-  const stockInput = document.getElementById('dish-stock');
-  const urlInput = document.getElementById('dish-image-url');
-  const fileInput = document.getElementById('dish-img-file');
-  const preview = document.getElementById('dish-img-preview');
-
-  if (fileInput) fileInput.value = '';
-
-  if (id) {
-    const item = menuData.find(m => m.id === id);
-    if (!item) return;
-    title.innerText = 'Modifier le plat / 編輯菜品';
-    document.getElementById('dish-id').value = item.id;
-    document.getElementById('dish-name-fr').value = item.name_fr || '';
-    document.getElementById('dish-name-zh').value = item.name_zh || '';
-    document.getElementById('dish-price').value = item.price || '';
-    if (sortInput) sortInput.value = item.sort_order || 1;
-    if (stockInput) stockInput.value = (typeof item.stock === 'number') ? item.stock : 99;
-    if (urlInput) urlInput.value = item.image_url || '';
-    
-    if (preview) {
-      preview.innerHTML = item.image_url 
-        ? `<img src="${item.image_url}" class="w-full h-full object-cover">`
-        : '無圖片';
-    }
-
-    const normKey = normalizeCategory(item.category, item.name_zh, item.name_fr);
-    const catSelect = document.getElementById('dish-category');
-    if (catSelect) {
-      if (normKey === 'Specialite') catSelect.value = '每日特色';
-      else if (normKey === 'Seafood') catSelect.value = '海鮮類';
-      else if (normKey === 'Beef') catSelect.value = '牛肉類';
-      else if (normKey === 'Legumes') catSelect.value = '素菜';
-      else if (normKey === 'Staple') catSelect.value = '主食';
-      else catSelect.value = '葷菜';
-    }
-  } else {
-    title.innerText = 'Ajouter un plat / 新增菜品';
-    document.getElementById('dish-id').value = '';
-    document.getElementById('dish-name-fr').value = '';
-    document.getElementById('dish-name-zh').value = '';
-    document.getElementById('dish-price').value = '';
-    if (sortInput) sortInput.value = '1';
-    if (stockInput) stockInput.value = '99';
-    if (urlInput) urlInput.value = '';
-    if (preview) preview.innerHTML = '無圖片';
-    document.getElementById('dish-category').value = '每日特色';
-  }
-  modal.classList.remove('hidden');
-}
-
-function closeDishModal() {
-  const modal = document.getElementById('dish-modal');
-  if (modal) modal.classList.add('hidden');
-}
-
-async function saveDish() {
-  const id = document.getElementById('dish-id').value;
-  const name_fr = document.getElementById('dish-name-fr').value.trim();
-  const name_zh = document.getElementById('dish-name-zh').value.trim();
-  const price = parseFloat(document.getElementById('dish-price').value);
-  const sortInput = document.getElementById('dish-sort');
-  const stockInput = document.getElementById('dish-stock');
-  const fileInput = document.getElementById('dish-img-file');
-  let image_url = document.getElementById('dish-image-url').value.trim();
-
-  const sort_order = sortInput ? (parseInt(sortInput.value) || 1) : 1;
-  const stock = stockInput ? (parseInt(stockInput.value) >= 0 ? parseInt(stockInput.value) : 99) : 99;
-  const category = document.getElementById('dish-category').value;
-
-  if (!name_fr || !name_zh || isNaN(price)) {
-    return alert('Veuillez remplir tous les champs / 請完整填寫名稱與價格！');
-  }
-
-  if (fileInput && fileInput.files && fileInput.files[0]) {
-    const file = fileInput.files[0];
-    const fileExt = file.name.split('.').pop();
-    const fileName = `${Date.now()}_${Math.random().toString(36).substring(2, 7)}.${fileExt}`;
-
-    const { data: uploadData, error: uploadError } = await supabaseClient.storage
-      .from('dishes')
-      .upload(fileName, file);
-
-    if (uploadError) {
-      alert('❌ 圖片上傳失敗: ' + uploadError.message);
-      return;
-    }
-
-    const { data: publicUrlData } = supabaseClient.storage
-      .from('dishes')
-      .getPublicUrl(fileName);
-
-    if (publicUrlData) {
-      image_url = publicUrlData.publicUrl;
-    }
-  }
-
-  const payload = { 
-    name_fr, 
-    name_zh, 
-    price, 
-    sort_order,
-    stock,
-    category,
-    image_url,
-    is_available: stock > 0 
-  };
-
-  let res;
-  if (id) {
-    res = await supabaseClient.from('menu_items').update(payload).eq('id', id);
-  } else {
-    res = await supabaseClient.from('menu_items').insert([payload]);
-  }
-
-  if (res.error) {
-    alert('❌ 保存失敗: ' + res.error.message);
-  } else {
-    closeDishModal();
-    await fetchMenu();
-    fetchAdminMenu();
-  }
-}
-
-async function deleteDish(event, id, nameZh) {
-  if (event) event.stopPropagation();
-
-  const confirmDelete = confirm(`⚠️ Êtes-vous sûr de vouloir supprimer "${nameZh}" ?\n確定要永久刪除菜品「${nameZh}」嗎？刪除後無法恢復！`);
-  if (!confirmDelete) return;
-
-  const { error } = await supabaseClient.from('menu_items').delete().eq('id', id);
-
-  if (error) {
-    alert('❌ 刪除失敗: ' + error.message);
-  } else {
-    menuData = menuData.filter(m => m.id !== id);
-    alert('✅ 菜品已成功刪除！');
-    fetchAdminMenu();
-    renderMenu();
-  }
-}
-
-window.addEventListener('DOMContentLoaded', () => {
-  fetchMenu();
-  checkUrlAdminParam();
-  
-  updateBusinessStatusBar();
-  setInterval(updateBusinessStatusBar, 60000);
-});
-
-function openDishDetailModal(id) {
-  const item = menuData.find(i => i.id === id);
-  if (!item) return;
-
-  const modal = document.getElementById('dish-detail-modal');
-  const imgContainer = document.getElementById('detail-modal-img-container');
-  const nameFr = document.getElementById('detail-modal-name-fr');
-  const nameZh = document.getElementById('detail-modal-name-zh');
-  const priceElem = document.getElementById('detail-modal-price');
-  const stockElem = document.getElementById('detail-modal-stock');
-  const addBtn = document.getElementById('detail-modal-add-btn');
-
-  if (item.image_url) {
-    imgContainer.innerHTML = `<img src="${item.image_url}" class="w-full h-full object-cover">`;
-  } else {
-    imgContainer.innerHTML = `<div class="text-4xl text-orange-400 font-bold">🍲</div>`;
-  }
-
-  nameFr.innerText = item.name_fr || '';
-  nameZh.innerText = item.name_zh || '';
-  priceElem.innerText = (item.price || 0).toFixed(2) + ' €';
-  
-  const maxStock = (typeof item.stock === 'number') ? item.stock : 99;
-  const isAvailable = (item.is_available !== false) && (maxStock > 0);
-
-  stockElem.innerText = `Stock: ${maxStock}`;
-
-  if (isAvailable) {
-    addBtn.disabled = false;
-    addBtn.className = "w-full bg-green-500 hover:bg-green-600 text-white font-bold py-3 rounded-xl text-sm shadow transition active:scale-95";
-    addBtn.innerText = "Ajouter au panier / 加入購物車 🛒";
-    addBtn.onclick = () => {
-      updateCart(item.id, 1);
-      closeDishDetailModal();
-    };
-  } else {
-    addBtn.disabled = true;
-    addBtn.className = "w-full bg-gray-300 text-gray-500 font-bold py-3 rounded-xl text-sm cursor-not-allowed";
-    addBtn.innerText = "Épuisé / 已售罄";
-  }
-
-  modal.classList.remove('hidden');
-}
-
-function closeDishDetailModal() {
-  const modal = document.getElementById('dish-detail-modal');
-  if (modal) modal.classList.add('hidden');
-}
-
-async function deleteOrderFromSupabase(orderId, customerName) {
-  const confirmDelete = confirm(`⚠️ Supprimer définitivement la commande de "${customerName}" ?\n\n確定要永久刪除來自「${customerName}」的這筆訂單嗎？`);
-  
-  if (!confirmDelete) return;
-
-  const targetOrder = rawOrders.find(o => o.id == orderId);
-  console.log("👉 點擊刪除的完整訂單資料物件：", targetOrder);
-  console.log("👉 傳入的 orderId 數值與類型:", orderId, typeof orderId);
-
-  try {
-    const { data, error } = await supabaseClient
-      .from('orders')
-      .delete()
-      .eq('id', orderId)
-      .select();
-
-    if (error) {
-      console.error('Supabase 刪除報錯:', error);
-      alert('❌ 刪除失敗: ' + error.message);
-    } else if (!data || data.length === 0) {
-      alert('⚠️ 刪除失敗：請按 F12 打開 Console 查看印出的訂單資料結構。');
-    } else {
-      alert('✅ 訂單已成功永久刪除！');
-      fetchOrders();
-    }
-  } catch (err) {
-    console.error('刪除過程發生異常:', err);
-    alert('❌ 系統異常: ' + err.message);
-  }
-}
-
-function generateWhatsAppLink(orderData, orderId) {
-  const phone = STORE_CONFIG.whatsappNumber;
-  
-  const itemsText = orderData.items.map(item => `- ${item.name} x${item.quantity} (€${(item.price * item.quantity).toFixed(2)})`).join('\n');
-  
-  const message = `Bonjour ${STORE_CONFIG.storeName} ! 👋
-J'ai passé une commande sur votre site.
-----------------------------------
-🧾 訂單號 / Order ID: #${orderId.slice(0, 8)}
-👤 姓名 / Nom: ${orderData.customer_name}
-📞 電話 / Tél: ${orderData.customer_phone}
-📍 地址/備註: ${orderData.delivery_address || '到店自取 / Click & Collect'}
-
-🛍️ 訂單明細 / Détails:
-${itemsText}
-
-💰 總金額 / Total: €${orderData.total_price.toFixed(2)}
-----------------------------------
-Veuillez me confirmer la commande pour lancer la préparation, merci ! 🙏`;
-
-  return `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
-}
-
-function showWhatsAppModal(whatsappUrl, orderId) {
-  const existingModal = document.getElementById('whatsapp-modal');
-  if (existingModal) existingModal.remove();
-
-  const modalHtml = `
-    <div id="whatsapp-modal" class="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center p-4 z-50 animate-fade-in">
-      <div class="bg-white rounded-2xl max-w-md w-full p-6 text-center shadow-2xl transform transition-all">
-        <div class="w-16 h-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-4 text-3xl">
-          📱
-        </div>
-        <h3 class="text-xl font-bold text-gray-800 mb-2">🎉 下單成功！Commande envoyée !</h3>
-        <p class="text-xs text-gray-500 mb-4">訂單編號 / N°: #${orderId.slice(0, 8)}</p>
-        
-        <div class="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-6 text-left text-sm text-amber-800">
-          ⚠️ <strong>提醒 / Attention :</strong><br>
-          請點擊下方按鈕，發送 WhatsApp 訊息給店家確認訂單，店家收到後才會開始製作哦！<br>
-          <span class="text-xs text-amber-600">Veuillez envoyer un message WhatsApp pour valider la commande.</span>
-        </div>
-
-        <a href="${whatsappUrl}" target="_blank" onclick="markWhatsappClicked('${orderId}')"
-           class="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-4 rounded-xl shadow-lg flex items-center justify-center space-x-2 transition duration-200 mb-3 text-lg">
-          <svg class="w-6 h-6 fill-current" viewBox="0 0 24 24">
-            <path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981z"/>
-          </svg>
-          <span>一鍵開啟 WhatsApp 發送確認</span>
-        </a>
-
-        <button onclick="document.getElementById('whatsapp-modal').remove()" class="text-xs text-gray-400 hover:text-gray-600 mt-2 underline">
-          關閉視窗 / Fermer
+      <div class="flex items-center gap-2">
+        <button type="button" onclick="openHistoryModal()" class="bg-white/20 hover:bg-white/30 text-white text-xs px-2.5 py-1 rounded-full border border-white/40 transition">
+          📋 Mes Commandes / 我的訂單
+        </button>
+        <button id="admin-btn" onclick="toggleMode()" class="hidden bg-white/20 hover:bg-white/30 text-white text-xs px-2.5 py-1 rounded-full border border-white/40 transition">
+          Admin / 後台
         </button>
       </div>
     </div>
-  `;
+  </header>
 
-  document.body.insertAdjacentHTML('beforeend', modalHtml);
-}
+  <!-- 2. 顧客前台點餐界面 -->
+  <div id="customer-view" class="flex-1 flex overflow-hidden">
+    <!-- 左側分類側邊欄 -->
+    <div id="category-bar" class="w-24 bg-gray-200 border-r border-gray-300 overflow-y-auto flex-shrink-0">
+      <!-- 動態渲染分類 -->
+    </div>
 
-async function markWhatsappClicked(orderId) {
-  playWhatsappClickSound();
+    <!-- 右側菜品列表 -->
+    <div id="menu-container" class="flex-1 p-3 overflow-y-auto space-y-3 pb-24">
+      <div class="text-center text-gray-400 py-10">Chargement du menu...</div>
+    </div>
 
-  if (!orderId) return;
-  try {
-    await supabaseClient
-      .from('orders')
-      .update({ whatsapp_sent: true })
-      .eq('id', orderId);
-  } catch (e) {
-    console.error('更新 WhatsApp 點擊狀態失敗:', e);
-  }
-}
+    <!-- 底部購物車結算欄 -->
+    <div class="fixed bottom-0 inset-x-0 bg-slate-800 text-white p-3 flex justify-between items-center shadow-2xl z-40 border-t border-slate-700">
+      <div class="flex items-center gap-3">
+        <div class="relative">
+          <button type="button" onclick="openCheckoutModal()" class="w-10 h-10 bg-green-500 rounded-full flex items-center justify-center font-bold text-lg active:scale-90 transition">
+            🛒
+          </button>
+          <span id="cart-badge" class="hidden absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold w-5 h-5 rounded-full flex items-center justify-center border-2 border-slate-800">0</span>
+        </div>
+        <div>
+          <div class="text-lg font-black text-green-400"><span id="total-price">0.00</span> €</div>
+          <div class="text-[10px] text-gray-400">Livraison à domicile</div>
+        </div>
+      </div>
+      <!-- 🌟 加上 id="checkout-btn" 方便程式碼控制其灰階與點擊狀態 -->
+      <button id="checkout-btn" type="button" onclick="openCheckoutModal()" class="bg-green-500 hover:bg-green-600 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow active:scale-95 transition">
+        Valider / 結算
+      </button>
+    </div>
+  </div>
+
+  <!-- 3. 下單彈窗 -->
+  <div id="checkout-modal" class="hidden fixed inset-0 bg-black/60 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+    <div class="bg-white w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl p-5 space-y-4 max-h-[90vh] overflow-y-auto">
+      <div class="flex justify-between items-center border-b pb-3">
+        <h3 class="font-bold text-lg text-gray-800">Finaliser la commande / 確認訂單</h3>
+        <button type="button" onclick="closeCheckoutModal()" class="text-gray-400 text-xl font-bold">✕</button>
+      </div>
+      
+      <div class="space-y-3">
+        <div>
+          <label class="block text-xs font-bold text-gray-600 mb-1">Jour de livraison / 配送日期 *</label>
+          <select id="cust-date" class="w-full border border-gray-300 p-2.5 rounded-lg text-sm bg-white focus:outline-none focus:border-green-500 font-bold text-gray-800">
+            <option value="">-- Choisir le jour / 請選擇日期 --</option>
+            <option value="Aujourd'hui (當天)">Aujourd'hui / 當天</option>
+            <option value="Demain (明天)">Demain / 明天</option>
+          </select>
+        </div>
+
+        <div>
+          <label class="block text-xs font-bold text-gray-600 mb-1">Créneau horaire / 配送時段 *</label>
+          <select id="cust-time" class="w-full border border-gray-300 p-2.5 rounded-lg text-sm bg-white focus:outline-none focus:border-green-500 font-bold text-gray-800">
+            <option value="">-- Choisir le créneau / 請選擇時段 --</option>
+            <option value="Midi (中午)">Midi / 中午</option>
+            <option value="Soir (晚上)">Soir / 晚上</option>
+          </select>
+        </div>
+
+        <div>
+          <label class="block text-xs font-bold text-gray-600 mb-1">Nom / 姓名或微信暱稱 *</label>
+          <input id="cust-name" type="text" placeholder="Ex: Jean (Paris)" class="w-full border border-gray-300 p-2.5 rounded-lg text-sm focus:outline-none focus:border-green-500">
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-gray-600 mb-1">Téléphone (FR) / 法國聯繫電話 *</label>
+          <input id="cust-phone" type="tel" placeholder="Ex: 06 12 34 56 78" class="w-full border border-gray-300 p-2.5 rounded-lg text-sm focus:outline-none focus:border-green-500">
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-gray-600 mb-1">Adresse de livraison / 送餐地址 *</label>
+          <input id="cust-address" type="text" placeholder="Ex: 12 Rue de Rivoli, Paris 75001" class="w-full border border-gray-300 p-2.5 rounded-lg text-sm focus:outline-none focus:border-green-500">
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-gray-600 mb-1">Remarques / 備註 (選填)</label>
+          <input id="cust-note" type="text" placeholder="Ex: Less spicy / 微辣" class="w-full border border-gray-300 p-2.5 rounded-lg text-sm focus:outline-none focus:border-green-500">
+        </div>
+      </div>
+
+      <div class="bg-gray-50 p-3 rounded-lg flex justify-between items-center text-sm font-bold border">
+        <span>Total：</span>
+        <span class="text-xl text-green-600"><span id="modal-total-price">0.00</span> €</span>
+      </div>
+
+      <button type="button" onclick="submitOrder()" class="w-full bg-green-500 text-white font-bold py-3 rounded-xl shadow-lg hover:bg-green-600 transition">
+        Confirmer / 提交訂單
+      </button>
+    </div>
+  </div>
+
+  <!-- 4. 電子小票彈窗 -->
+  <div id="receipt-modal" class="hidden fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
+    <div class="bg-white w-full max-w-md rounded-2xl p-6 space-y-4 shadow-2xl relative border-t-8 border-green-500 animate-slide-up max-h-[90vh] overflow-y-auto">
+      <div class="text-center">
+        <div class="w-12 h-12 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto text-2xl font-bold mb-2">✓</div>
+        <h3 class="text-xl font-extrabold text-gray-800">Commande Confirmée</h3>
+        <p class="text-xs text-gray-500 mt-1">訂單已成功提交！請截圖或複製發給群主</p>
+      </div>
+
+      <div id="receipt-card" class="bg-gray-50 border border-dashed border-gray-300 p-4 rounded-xl space-y-3 text-xs text-gray-700">
+        <div class="flex justify-between border-b pb-2">
+          <span class="font-bold text-gray-500">N° Commande (單號):</span>
+          <span id="receipt-id" class="font-mono font-bold text-gray-800">#CC-0001</span>
+        </div>
+        <div class="space-y-1">
+          <div class="text-orange-600 font-bold"><strong>Livraison / 配送時間:</strong> <span id="receipt-slot"></span></div>
+          <div><strong>Client / 姓名:</strong> <span id="receipt-name"></span></div>
+          <div><strong>Tél / 電話:</strong> <span id="receipt-phone"></span></div>
+          <div><strong>Adresse / 地址:</strong> <span id="receipt-address"></span></div>
+        </div>
+
+        <div class="border-t pt-2 space-y-1">
+          <div class="font-bold text-gray-600 mb-1">Détail / 餐點明細:</div>
+          <ul id="receipt-items" class="space-y-1 pl-1"></ul>
+        </div>
+
+        <div class="border-t pt-2 flex justify-between items-center font-bold text-sm text-gray-900">
+          <span>Total / 總計:</span>
+          <span class="text-base text-green-600"><span id="receipt-total">0.00</span> €</span>
+        </div>
+      </div>
+
+      <div class="space-y-2 pt-1">
+        <button type="button" onclick="downloadReceiptAsImage()" class="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-2.5 rounded-xl text-xs flex items-center justify-center gap-1 shadow transition">
+          📸 Enregistrer le ticket en image / 儲存小票為圖片
+        </button>
+        <button type="button" onclick="copyReceiptText()" class="w-full bg-orange-500 hover:bg-orange-600 text-white font-bold py-2.5 rounded-xl text-xs flex items-center justify-center gap-1 shadow transition">
+          📋 Copier les détails de la commande / 複製訂單明細 
+        </button>
+        <button type="button" onclick="closeReceiptModal()" class="w-full bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold py-2.5 rounded-xl text-xs transition">
+          Fermer / 完成
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 5. 歷史訂單彈窗 Modal -->
+  <div id="history-modal" class="hidden fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+    <div class="bg-white w-full max-w-md rounded-2xl p-5 space-y-4 shadow-2xl max-h-[85vh] flex flex-col">
+      <div class="flex justify-between items-center border-b pb-3 flex-shrink-0">
+        <h3 class="font-bold text-base text-gray-800">Mes Commandes / 我的歷史訂單</h3>
+        <button type="button" onclick="closeHistoryModal()" class="text-gray-400 text-xl font-bold">✕</button>
+      </div>
+      
+      <div id="history-list" class="flex-1 overflow-y-auto space-y-3 pr-1"></div>
+
+      <button type="button" onclick="closeHistoryModal()" class="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold py-2.5 rounded-xl text-xs transition flex-shrink-0">
+        Fermer / 關閉
+      </button>
+    </div>
+  </div>
+
+  <!-- 6. 群主後台視圖 (Admin View) -->
+  <div id="admin-view" class="hidden p-4 space-y-4 max-w-xl mx-auto pb-20 overflow-y-auto h-full">
+    <div class="flex justify-between items-center bg-white p-3 rounded-xl shadow-sm border">
+      <h2 class="font-bold text-gray-800 text-base">🚨 Commandes & Menu / 群主後台</h2>
+      <button type="button" onclick="toggleMode()" class="bg-gray-100 text-gray-600 text-xs px-3 py-1.5 rounded-lg font-bold">
+        Retour / 返回前台
+      </button>
+    </div>
+
+    <div class="flex bg-gray-200 p-1 rounded-xl text-xs font-bold">
+      <button id="tab-orders-btn" type="button" onclick="switchAdminTab('orders')" class="flex-1 py-2 rounded-lg bg-white shadow text-gray-800 transition">
+        📦 訂單管理
+      </button>
+      <button id="tab-menu-btn" type="button" onclick="switchAdminTab('menu')" class="flex-1 py-2 rounded-lg text-gray-500 transition">
+        🍲 菜品管理
+      </button>
+    </div>
+
+    <div id="admin-orders-tab" class="space-y-3">
+      <div class="grid grid-cols-2 gap-2 text-center">
+        <div class="bg-gradient-to-br from-green-500 to-emerald-600 text-white p-2.5 rounded-xl shadow-sm">
+          <div class="text-[10px] opacity-80">Chiffre d'affaires / 營收總計</div>
+          <div class="text-lg font-black mt-0.5"><span id="stat-total-money">0.00</span> €</div>
+        </div>
+        <div class="bg-gradient-to-br from-orange-500 to-amber-600 text-white p-2.5 rounded-xl shadow-sm">
+          <div class="text-[10px] opacity-80">Total Commandes / 訂單筆數</div>
+          <div class="text-lg font-black mt-0.5"><span id="stat-order-count">0</span> 筆</div>
+        </div>
+      </div>
+
+      <div class="flex bg-gray-100 p-1 rounded-xl text-[11px] font-bold border border-gray-200">
+        <button type="button" id="order-filter-all" onclick="filterOrderTab('all')" class="flex-1 py-1.5 rounded-lg bg-white text-green-700 shadow-sm transition">
+          全部 (Toutes)
+        </button>
+        <button type="button" id="order-filter-today" onclick="filterOrderTab('today')" class="flex-1 py-1.5 rounded-lg text-gray-500 transition">
+          今天 (Aujourd'hui)
+        </button>
+        <button type="button" id="order-filter-tomorrow" onclick="filterOrderTab('tomorrow')" class="flex-1 py-1.5 rounded-lg text-gray-500 transition">
+          明天 (Demain)
+        </button>
+      </div>
+
+      <div class="flex gap-2">
+        <select id="order-status-filter" onchange="applyOrderFilters()" class="border p-2 rounded-xl text-xs bg-white font-bold text-gray-700">
+          <option value="all">所有狀態 / Tous les statuts</option>
+          <option value="pending">⏳ 待處理 (En attente)</option>
+          <option value="delivering">🛵 配送中 (En livraison)</option>
+          <option value="completed">✅ 已送達 (Libré)</option>
+          <option value="cancelled">❌ 已取消 (Annulé)</option>
+        </select>
+        <input type="text" id="order-search-input" oninput="applyOrderFilters()" placeholder="🔍 搜尋姓名、電話、地址..." class="flex-1 border p-2 rounded-xl text-xs focus:outline-none focus:border-orange-500 bg-white">
+        <input type="date" id="order-date-picker" onchange="applyOrderFilters()" class="border p-2 rounded-xl text-xs bg-white text-gray-600">
+      </div>
+
+      <div id="order-list" class="space-y-3">
+        <div class="text-gray-400 text-xs text-center py-4">Chargement / 加載中...</div>
+      </div>
+    </div>
+
+    <div id="admin-menu-tab" class="hidden space-y-3">
+      <button type="button" onclick="openDishModal()" class="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-2.5 rounded-xl text-xs shadow transition">
+        ➕ Add New Dish / 新增菜品
+      </button>
+      <div id="admin-menu-list" class="space-y-2"></div>
+    </div>
+  </div>
+
+  <div id="dish-modal" class="hidden fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+    <div class="bg-white w-full max-w-md rounded-2xl p-5 space-y-3 shadow-2xl max-h-[90vh] overflow-y-auto">
+      <div class="flex justify-between items-center border-b pb-2">
+        <h3 id="dish-modal-title" class="font-bold text-sm text-gray-800">Ajouter un plat / 新增菜品</h3>
+        <button type="button" onclick="closeDishModal()" class="text-gray-400 font-bold">✕</button>
+      </div>
+      <input type="hidden" id="dish-id">
+      
+      <div>
+        <label class="block text-xs font-bold text-gray-600 mb-1">Image du plat / 菜品圖片</label>
+        <div class="flex items-center gap-3">
+          <div id="dish-img-preview" class="w-16 h-16 rounded-lg bg-gray-100 border flex items-center justify-center text-gray-400 text-xs overflow-hidden flex-shrink-0">
+            無圖片
+          </div>
+          <div class="flex-1 space-y-1">
+            <input type="file" id="dish-img-file" accept="image/*" class="w-full text-[11px] text-gray-500 file:mr-2 file:py-1 file:px-2 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-green-50 file:text-green-700 hover:file:bg-green-100">
+            <input id="dish-image-url" type="text" class="w-full border p-1.5 rounded text-[10px]" placeholder="或直接貼上圖片 URL 網址">
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <label class="block text-xs font-bold text-gray-600 mb-1">Nom (FR) / 法文名稱 *</label>
+        <input id="dish-name-fr" type="text" class="w-full border p-2 rounded text-xs" placeholder="Ex: Poulet Croustillant">
+      </div>
+      
+      <div>
+        <label class="block text-xs font-bold text-gray-600 mb-1">Nom (ZH) / 中文名稱 *</label>
+        <input id="dish-name-zh" type="text" class="w-full border p-2 rounded text-xs" placeholder="例如：香酥雞">
+      </div>
+      
+      <div class="grid grid-cols-2 gap-2">
+        <div>
+          <label class="block text-xs font-bold text-gray-600 mb-1">Prix (€) / 價格 *</label>
+          <input id="dish-price" type="number" step="0.01" class="w-full border p-2 rounded text-xs" placeholder="12.50">
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-gray-600 mb-1">Catégorie / 分類 *</label>
+          <select id="dish-category" class="w-full border p-2 rounded text-xs bg-white">
+            <option value="每日特色">Spécialité / 每日特色</option>
+            <option value="葷菜">Viandes / 葷菜</option>
+            <option value="海鮮類">Poissons & Seafood / 海鮮類</option>
+            <option value="牛肉類">Bœuf / 牛肉類</option>
+            <option value="素菜">Légumes / 素菜</option>
+            <option value="主食">Riz/Nouilles / 主食</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-2 gap-2">
+        <div>
+          <label class="block text-xs font-bold text-gray-600 mb-1">Ordre / 排序號</label>
+          <input id="dish-sort" type="number" class="w-full border p-2 rounded text-xs" placeholder="1">
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-gray-600 mb-1">Stock / 剩餘數量 (庫存)</label>
+          <input id="dish-stock" type="number" min="0" class="w-full border p-2 rounded text-xs" placeholder="99">
+        </div>
+      </div>
+      
+      <button type="button" onclick="saveDish()" class="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-2.5 rounded-xl text-xs shadow transition">
+        Enregistrer / 保存菜品
+      </button>
+    </div>
+  </div>
+
+  <div id="dish-detail-modal" class="hidden fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
+    <div class="bg-white w-full max-w-sm rounded-2xl overflow-hidden shadow-2xl relative animate-scale-up">
+      <button type="button" onclick="closeDishDetailModal()" class="absolute top-3 right-3 bg-black/50 hover:bg-black/70 text-white w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm z-10 transition">
+        ✕
+      </button>
+      
+      <div id="detail-modal-img-container" class="w-full h-56 bg-gray-100 flex items-center justify-center overflow-hidden"></div>
+
+      <div class="p-5 space-y-3">
+        <div>
+          <h3 id="detail-modal-name-fr" class="font-extrabold text-lg text-gray-800 leading-tight"></h3>
+          <p id="detail-modal-name-zh" class="text-sm text-gray-500 mt-0.5"></p>
+        </div>
+
+        <div class="flex justify-between items-center pt-2 border-t">
+          <span id="detail-modal-price" class="text-xl font-black text-green-600">0.00 €</span>
+          <span id="detail-modal-stock" class="text-xs text-orange-600 bg-orange-50 px-2 py-1 rounded-full border border-orange-100 font-bold">Stock: 99</span>
+        </div>
+
+        <button id="detail-modal-add-btn" type="button" class="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-3 rounded-xl text-sm shadow transition active:scale-95">
+          Ajouter au panier / 加入購物車 🛒
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
