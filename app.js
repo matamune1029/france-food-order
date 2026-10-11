@@ -24,6 +24,64 @@ const fixedCategories = [
   { key: 'Staple', fr: 'Riz/Nouilles', zh: '主食' }
 ];
 
+// 🔊 鈴聲 1：下單成功提示音（清脆輕快高音雙音）
+function playOrderSuccessSound() {
+  try {
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const now = audioCtx.currentTime;
+
+    // 第一聲
+    const osc1 = audioCtx.createOscillator();
+    const gain1 = audioCtx.createGain();
+    osc1.type = 'sine';
+    osc1.frequency.setValueAtTime(587.33, now); // D5
+    gain1.gain.setValueAtTime(0.3, now);
+    gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
+    osc1.connect(gain1);
+    gain1.connect(audioCtx.destination);
+    osc1.start(now);
+    osc1.stop(now + 0.2);
+
+    // 第二聲（高音尾音）
+    const osc2 = audioCtx.createOscillator();
+    const gain2 = audioCtx.createGain();
+    osc2.type = 'sine';
+    osc2.frequency.setValueAtTime(880, now + 0.15); // A5
+    gain2.gain.setValueAtTime(0.3, now + 0.15);
+    gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
+    osc2.connect(gain2);
+    gain2.connect(audioCtx.destination);
+    osc2.start(now + 0.15);
+    osc2.stop(now + 0.4);
+  } catch (e) {
+    console.log('Audio error:', e);
+  }
+}
+
+// 🔊 鈴聲 2：點擊 WhatsApp 提示音（溫和沉穩短音）
+function playWhatsappClickSound() {
+  try {
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const now = audioCtx.currentTime;
+
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(440, now); // A4
+    osc.frequency.exponentialRampToValueAtTime(659.25, now + 0.15); // E5
+    
+    gain.gain.setValueAtTime(0.3, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
+    
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start(now);
+    osc.stop(now + 0.25);
+  } catch (e) {
+    console.log('Audio error:', e);
+  }
+}
+
 function normalizeCategory(rawCat, nameZh = '', nameFr = '') {
   const cat = (rawCat || '').toString().toLowerCase().trim();
   const zh = (nameZh || '').toString().toLowerCase();
@@ -291,12 +349,14 @@ async function submitOrder() {
       }
     }
 
-    // 🌟 統一在這裡正確儲存帶有 dbId 的歷史紀錄（只存一次，避免被覆蓋）
     lastOrderDetails = { dbId: realDbId, orderId, deliverySlot, name, phone, address, note, items, total };
     saveOrderToLocal(lastOrderDetails);
 
     cart = {};
     closeCheckoutModal();
+
+    // 🔊 觸發下單成功提示音
+    playOrderSuccessSound();
 
     const whatsappOrderData = {
       customer_name: name,
@@ -429,8 +489,6 @@ function openHistoryModal() {
         total_price: o.total
       };
       const whatsappUrl = generateWhatsAppLink(whatsappOrderData, o.orderId);
-      
-      // 確保順利帶入歷史紀錄的 dbId（若是舊訂單沒有 dbId 則防呆給空字串）
       const targetDbId = o.dbId || '';
 
       return `
@@ -444,7 +502,6 @@ function openHistoryModal() {
           <div class="flex justify-between items-center pt-1 font-bold border-t border-gray-100">
             <span class="text-gray-500">總計: <span class="text-green-600 text-sm">${(o.total || 0).toFixed(2)} €</span></span>
             
-            <!-- 🌟 歷史訂單補救按鈕，點擊時會把 Supabase 的 dbId 傳給 markWhatsappClicked -->
             <a href="${whatsappUrl}" target="_blank" onclick="markWhatsappClicked('${targetDbId}')"
                class="bg-green-500 hover:bg-green-600 text-white px-3 py-1.5 rounded-lg font-bold flex items-center space-x-1 shadow-sm transition text-[11px]">
               <span>📱 傳送 WhatsApp</span>
@@ -1102,6 +1159,7 @@ function showWhatsAppModal(whatsappUrl, orderId) {
           <span class="text-xs text-amber-600">Veuillez envoyer un message WhatsApp pour valider la commande.</span>
         </div>
 
+        <!-- 🌟 點擊按鈕時觸發標記更新與 WhatsApp 專屬鈴聲 -->
         <a href="${whatsappUrl}" target="_blank" onclick="markWhatsappClicked('${orderId}')"
            class="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-4 rounded-xl shadow-lg flex items-center justify-center space-x-2 transition duration-200 mb-3 text-lg">
           <svg class="w-6 h-6 fill-current" viewBox="0 0 24 24">
@@ -1121,6 +1179,9 @@ function showWhatsAppModal(whatsappUrl, orderId) {
 }
 
 async function markWhatsappClicked(orderId) {
+  // 🔊 觸發點擊 WhatsApp 提示音
+  playWhatsappClickSound();
+
   if (!orderId) return;
   try {
     await supabaseClient
