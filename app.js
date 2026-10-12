@@ -1560,3 +1560,67 @@ async function saveBusinessHoursInfo() {
     }
   }
 }
+
+// 🔑 修改後台密碼函式
+async function saveAdminPassword() {
+  const oldPassInput = document.getElementById('setting-old-password');
+  const newPassInput = document.getElementById('setting-new-password');
+  const statusEl = document.getElementById('admin-password-save-status');
+
+  if (!oldPassInput || !newPassInput) return;
+
+  const oldPass = oldPassInput.value.trim();
+  const newPass = newPassInput.value.trim();
+
+  if (!oldPass || !newPass) {
+    alert("請完整填寫舊密碼與新密碼！");
+    return;
+  }
+
+  try {
+    // 1. 先從 Supabase 讀取目前的密碼設定（假設資料表 store_settings 的 id = 1）
+    const { data, error: fetchError } = await supabaseClient
+      .from('store_settings')
+      .select('admin_password')
+      .eq('id', 1)
+      .single();
+
+    if (fetchError) throw fetchError;
+
+    // 如果資料庫還沒設定過 admin_password，預設舊密碼為 "8888"
+    const currentDbPassword = (data && data.admin_password) ? data.admin_password : "8888";
+
+    // 2. 驗證舊密碼是否正確
+    if (oldPass !== currentDbPassword) {
+      alert("❌ 舊密碼輸入錯誤！");
+      return;
+    }
+
+    // 3. 更新至 Supabase
+    const { error: updateError } = await supabaseClient
+      .from('store_settings')
+      .update({ 
+        admin_password: newPass, 
+        updated_at: new Date() 
+      })
+      .eq('id', 1);
+
+    if (updateError) throw updateError;
+
+    // 清空輸入框
+    oldPassInput.value = '';
+    newPassInput.value = '';
+
+    if (statusEl) {
+      statusEl.innerText = "✅ 後台密碼已成功更新！";
+      statusEl.className = "text-xs mt-1 text-green-600 font-bold block text-center";
+      setTimeout(() => { statusEl.className = "text-xs mt-1 hidden text-center"; }, 3000);
+    }
+  } catch (err) {
+    console.error("更新密碼失敗:", err);
+    if (statusEl) {
+      statusEl.innerText = "❌ 密碼更新失敗";
+      statusEl.className = "text-xs mt-1 text-red-600 font-bold block text-center";
+    }
+  }
+}
