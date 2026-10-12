@@ -36,6 +36,7 @@ const fixedCategories = [
 ];
 
 // ⏰ 檢查是否在營業時間內（週一至週六 09:00 - 20:00 法國巴黎時間）
+// ⏰ 檢查是否在營業時間內（自動解析你設定的時間範圍）
 function checkIsBusinessOpen() {
   // 如果設定為手動模式，直接回傳手動開關狀態
   if (STORE_CONFIG.businessMode === 'manual') {
@@ -64,10 +65,19 @@ function checkIsBusinessOpen() {
 
     if (weekday === 'Sun') return false;
 
-    const totalMinutes = hour * 60 + minute;
-    const openMinutes = 9 * 60;   
-    const closeMinutes = 20 * 60; 
+    // 預設時間範圍（以防萬一）
+    let openMinutes = 12 * 60;   
+    let closeMinutes = 15 * 60; 
 
+    // 🌟 自動從你輸入的「營業時間標語」中抓取時間（例如 12:00 - 15:00）
+    const text = STORE_CONFIG.storeHoursText || "";
+    const match = text.match(/(\d{1,2}):(\d{2})\s*-\s*(\d{1,2}):(\d{2})/);
+    if (match) {
+      openMinutes = parseInt(match[1], 10) * 60 + parseInt(match[2], 10);
+      closeMinutes = parseInt(match[3], 10) * 60 + parseInt(match[4], 10);
+    }
+
+    const totalMinutes = hour * 60 + minute;
     return totalMinutes >= openMinutes && totalMinutes <= closeMinutes;
   } catch (e) {
     console.error('Time check error:', e);
