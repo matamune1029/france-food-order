@@ -12,7 +12,10 @@ const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 let STORE_CONFIG = {
   whatsappNumber: "85292773583", 
   storeName: "Cici Cuisine",
-  storeSlogan: "🕒 Livraison | 配送"
+  storeSlogan: "🕒 Livraison | 配送",
+  storeHoursText: "🕒 12:00 - 14:00 (Lundi - Samedi)",
+  businessMode: "auto",
+  manualOpen: true
 };
 
 let cart = {};
@@ -34,6 +37,10 @@ const fixedCategories = [
 
 // ⏰ 檢查是否在營業時間內（週一至週六 09:00 - 20:00 法國巴黎時間）
 function checkIsBusinessOpen() {
+  // 如果設定為手動模式，直接回傳手動開關狀態
+  if (STORE_CONFIG.businessMode === 'manual') {
+    return STORE_CONFIG.manualOpen;
+  }
   try {
     const now = new Date();
     const formatter = new Intl.DateTimeFormat('en-US', {
@@ -1370,6 +1377,30 @@ async function loadStoreSettings() {
         const sloganEl = document.getElementById('store-slogan-text');
         if (sloganEl) sloganEl.innerText = STORE_CONFIG.storeSlogan;
       }
+      // 並在 if (data) 下方加入：
+      if (data.store_hours_text) {
+        STORE_CONFIG.storeHoursText = data.store_hours_text;
+        const hoursInput = document.getElementById('setting-hours-text-input');
+        if (hoursInput) hoursInput.value = STORE_CONFIG.storeHoursText;
+      
+        const hoursEl = document.getElementById('store-hours-text');
+        if (hoursEl) hoursEl.innerText = STORE_CONFIG.storeHoursText;
+      }
+      
+      if (data.business_mode) {
+        STORE_CONFIG.businessMode = data.business_mode;
+        const modeSelect = document.getElementById('setting-business-mode-select');
+        if (modeSelect) modeSelect.value = STORE_CONFIG.businessMode;
+      }
+      
+      if (typeof data.manual_open === 'boolean') {
+        STORE_CONFIG.manualOpen = data.manual_open;
+        const manualSelect = document.getElementById('setting-manual-open-select');
+        if (manualSelect) manualSelect.value = STORE_CONFIG.manualOpen ? "true" : "false";
+      }
+      
+      toggleManualOpenOption();
+      updateBusinessStatusBar(); // 即時更新前台狀態橫幅
     }
   } catch (err) {
     console.error("載入設定失敗:", err);
@@ -1447,6 +1478,66 @@ async function saveStoreInfo() {
 
     if (statusEl) {
       statusEl.innerText = "✅ 店鋪資訊已成功更新！";
+      statusEl.className = "text-xs mt-1 text-green-600 font-bold block text-center";
+      setTimeout(() => { statusEl.className = "text-xs mt-1 hidden text-center"; }, 3000);
+    }
+  } catch (err) {
+    console.error("儲存失敗:", err);
+    if (statusEl) {
+      statusEl.innerText = "❌ 儲存失敗";
+      statusEl.className = "text-xs mt-1 text-red-600 font-bold block text-center";
+    }
+  }
+}
+
+function toggleManualOpenOption() {
+  const modeSelect = document.getElementById('setting-business-mode-select');
+  const container = document.getElementById('manual-open-container');
+  if (!modeSelect || !container) return;
+
+  if (modeSelect.value === 'manual') {
+    container.classList.remove('hidden');
+  } else {
+    container.classList.add('hidden');
+  }
+}
+
+async function saveBusinessHoursInfo() {
+  const hoursInput = document.getElementById('setting-hours-text-input');
+  const modeSelect = document.getElementById('setting-business-mode-select');
+  const manualSelect = document.getElementById('setting-manual-open-select');
+  const statusEl = document.getElementById('business-hours-save-status');
+
+  if (!hoursInput || !modeSelect || !manualSelect) return;
+
+  const newHoursText = hoursInput.value.trim() || "🕒 12:00 - 14:00 (Lundi - Samedi)";
+  const newMode = modeSelect.value;
+  const newManualOpen = manualSelect.value === 'true';
+
+  try {
+    const { error } = await supabaseClient
+      .from('store_settings')
+      .update({ 
+        store_hours_text: newHoursText, 
+        business_mode: newMode, 
+        manual_open: newManualOpen,
+        updated_at: new Date() 
+      })
+      .eq('id', 1);
+
+    if (error) throw error;
+
+    STORE_CONFIG.storeHoursText = newHoursText;
+    STORE_CONFIG.businessMode = newMode;
+    STORE_CONFIG.manualOpen = newManualOpen;
+
+    const hoursEl = document.getElementById('store-hours-text');
+    if (hoursEl) hoursEl.innerText = newHoursText;
+
+    updateBusinessStatusBar();
+
+    if (statusEl) {
+      statusEl.innerText = "✅ 營業設定已成功更新！";
       statusEl.className = "text-xs mt-1 text-green-600 font-bold block text-center";
       setTimeout(() => { statusEl.className = "text-xs mt-1 hidden text-center"; }, 3000);
     }
