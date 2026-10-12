@@ -11,7 +11,8 @@ const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 // 改為：
 let STORE_CONFIG = {
   whatsappNumber: "85292773583", 
-  storeName: "Cici Cuisine"
+  storeName: "Cici Cuisine",
+  storeSlogan: "🕒 Livraison | 配送"
 };
 
 let cart = {};
@@ -1339,17 +1340,35 @@ async function loadStoreSettings() {
   try {
     const { data, error } = await supabaseClient
       .from('store_settings')
-      .select('whatsapp_number')
+      .select('whatsapp_number, store_name, store_slogan')
       .eq('id', 1)
       .single();
 
-    if (data && data.whatsapp_number) {
-      STORE_CONFIG.whatsappNumber = data.whatsapp_number;
-      
-      // 🌟 關鍵：將資料庫裡的現有號碼自動填入後台的輸入框中，讓老闆看得見！
-      const inputEl = document.getElementById('setting-whatsapp-input');
-      if (inputEl) {
-        inputEl.value = STORE_CONFIG.whatsappNumber;
+    if (data) {
+      if (data.whatsapp_number) {
+        STORE_CONFIG.whatsappNumber = data.whatsapp_number;
+        const inputEl = document.getElementById('setting-whatsapp-input');
+        if (inputEl) inputEl.value = STORE_CONFIG.whatsappNumber;
+      }
+
+      if (data.store_name) {
+        STORE_CONFIG.storeName = data.store_name;
+        const nameInput = document.getElementById('setting-store-name-input');
+        if (nameInput) nameInput.value = STORE_CONFIG.storeName;
+
+        // 即時更新前台招牌店名
+        const titleEl = document.getElementById('store-title-text');
+        if (titleEl) titleEl.innerText = STORE_CONFIG.storeName;
+      }
+
+      if (data.store_slogan) {
+        STORE_CONFIG.storeSlogan = data.store_slogan;
+        const sloganInput = document.getElementById('setting-store-slogan-input');
+        if (sloganInput) sloganInput.value = STORE_CONFIG.storeSlogan;
+
+        // 即時更新前台招牌標語
+        const sloganEl = document.getElementById('store-slogan-text');
+        if (sloganEl) sloganEl.innerText = STORE_CONFIG.storeSlogan;
       }
     }
   } catch (err) {
@@ -1389,6 +1408,53 @@ async function saveWhatsAppNumber() {
     if (statusEl) {
       statusEl.innerText = "❌ 儲存失敗";
       statusEl.className = "text-sm mt-2 text-red-600 font-medium block";
+    }
+  }
+}
+
+async function saveStoreInfo() {
+  const nameInput = document.getElementById('setting-store-name-input');
+  const sloganInput = document.getElementById('setting-store-slogan-input');
+  const statusEl = document.getElementById('store-info-save-status');
+
+  if (!nameInput || !sloganInput) return;
+
+  const newName = nameInput.value.trim() || "Cici Cuisine";
+  const newSlogan = sloganInput.value.trim() || "🕒 Livraison | 配送";
+
+  try {
+    const { error } = await supabaseClient
+      .from('store_settings')
+      .update({ 
+        store_name: newName, 
+        store_slogan: newSlogan, 
+        updated_at: new Date() 
+      })
+      .eq('id', 1);
+
+    if (error) throw error;
+
+    // 更新記憶體中的設定
+    STORE_CONFIG.storeName = newName;
+    STORE_CONFIG.storeSlogan = newSlogan;
+
+    // 即時更新前台顯示
+    const titleEl = document.getElementById('store-title-text');
+    if (titleEl) titleEl.innerText = newName;
+
+    const sloganEl = document.getElementById('store-slogan-text');
+    if (sloganEl) sloganEl.innerText = newSlogan;
+
+    if (statusEl) {
+      statusEl.innerText = "✅ 店鋪資訊已成功更新！";
+      statusEl.className = "text-xs mt-1 text-green-600 font-bold block text-center";
+      setTimeout(() => { statusEl.className = "text-xs mt-1 hidden text-center"; }, 3000);
+    }
+  } catch (err) {
+    console.error("儲存失敗:", err);
+    if (statusEl) {
+      statusEl.innerText = "❌ 儲存失敗";
+      statusEl.className = "text-xs mt-1 text-red-600 font-bold block text-center";
     }
   }
 }
