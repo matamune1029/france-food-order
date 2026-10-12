@@ -735,6 +735,15 @@ function initAdminRealtimeListener() {
         fetchOrders();
       }
     )
+    .on(
+      'postgres_changes',
+      { event: 'UPDATE', schema: 'public', table: 'orders' },
+      (payload) => {
+        console.log('🔄 偵測到訂單狀態或 WA 點擊更新：', payload.new);
+        // 當訂單狀態改變或點擊 WhatsApp 時自動重新抓取並刷新後台列表
+        fetchOrders();
+      }
+    )
     .subscribe();
 }
 
