@@ -1343,11 +1343,12 @@ async function markWhatsappClicked(orderId) {
 }
 
 // 1. 從 Supabase 載入 WhatsApp 設定
+// 1. 從 Supabase 載入設定
 async function loadStoreSettings() {
   try {
     const { data, error } = await supabaseClient
       .from('store_settings')
-      .select('whatsapp_number, store_name, store_slogan')
+      .select('whatsapp_number, store_name, store_slogan, store_hours_text, business_mode, manual_open') // 👈 必須包含這三個新欄位
       .eq('id', 1)
       .single();
 
@@ -1362,8 +1363,6 @@ async function loadStoreSettings() {
         STORE_CONFIG.storeName = data.store_name;
         const nameInput = document.getElementById('setting-store-name-input');
         if (nameInput) nameInput.value = STORE_CONFIG.storeName;
-
-        // 即時更新前台招牌店名
         const titleEl = document.getElementById('store-title-text');
         if (titleEl) titleEl.innerText = STORE_CONFIG.storeName;
       }
@@ -1372,35 +1371,33 @@ async function loadStoreSettings() {
         STORE_CONFIG.storeSlogan = data.store_slogan;
         const sloganInput = document.getElementById('setting-store-slogan-input');
         if (sloganInput) sloganInput.value = STORE_CONFIG.storeSlogan;
-
-        // 即時更新前台招牌標語
         const sloganEl = document.getElementById('store-slogan-text');
         if (sloganEl) sloganEl.innerText = STORE_CONFIG.storeSlogan;
       }
-      // 並在 if (data) 下方加入：
+
+      // 🌟 檢查這裡有沒有這段營業時間的讀取邏輯：
       if (data.store_hours_text) {
         STORE_CONFIG.storeHoursText = data.store_hours_text;
         const hoursInput = document.getElementById('setting-hours-text-input');
         if (hoursInput) hoursInput.value = STORE_CONFIG.storeHoursText;
-      
         const hoursEl = document.getElementById('store-hours-text');
         if (hoursEl) hoursEl.innerText = STORE_CONFIG.storeHoursText;
       }
-      
+
       if (data.business_mode) {
         STORE_CONFIG.businessMode = data.business_mode;
         const modeSelect = document.getElementById('setting-business-mode-select');
         if (modeSelect) modeSelect.value = STORE_CONFIG.businessMode;
       }
-      
+
       if (typeof data.manual_open === 'boolean') {
         STORE_CONFIG.manualOpen = data.manual_open;
         const manualSelect = document.getElementById('setting-manual-open-select');
         if (manualSelect) manualSelect.value = STORE_CONFIG.manualOpen ? "true" : "false";
       }
-      
+
       toggleManualOpenOption();
-      updateBusinessStatusBar(); // 即時更新前台狀態橫幅
+      updateBusinessStatusBar();
     }
   } catch (err) {
     console.error("載入設定失敗:", err);
