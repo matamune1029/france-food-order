@@ -14,12 +14,15 @@
   <div id="business-status-banner"></div>
 
   <!-- 1. 頂部店鋪招牌 -->
+  <!-- 1. 頂部店鋪招牌 -->
   <header class="bg-gradient-to-r from-red-600 to-orange-500 text-white p-4 shadow-md flex-shrink-0 select-none">
     <div class="flex justify-between items-start">
       <div>
-        <h1 onclick="handleSecretClick()" class="text-xl font-bold tracking-wide cursor-pointer active:opacity-80">Cici Cuisine</h1>
+        <!-- 🌟 這裡加上 id="store-title-text" -->
+        <h1 onclick="handleSecretClick()" id="store-title-text" class="text-xl font-bold tracking-wide cursor-pointer active:opacity-80">Cici Cuisine</h1>
         <div class="space-y-0.5 mt-1">
-          <p class="text-xs opacity-90">🕒 Livraison | 配送</p>
+          <!-- 🌟 這裡加上 id="store-slogan-text" -->
+          <p id="store-slogan-text" class="text-xs opacity-90">🕒 Livraison | 配送</p>
           <p class="text-[11px] opacity-80 font-medium">🕒 12:00 - 14:00 (Lundi - Samedi)</p>
         </div>
       </div>
@@ -270,6 +273,24 @@
           </div>
           <p id="whatsapp-save-status" class="text-xs mt-1 hidden"></p>
         </div>
+      </div>
+      <div class="bg-white p-4 rounded-xl shadow-sm border space-y-3">
+        <h3 class="font-bold text-gray-800 text-sm border-b pb-2">🏷️ 店鋪基本資訊 / Informations du magasin</h3>
+    
+        <div>
+          <label class="block text-xs font-bold text-gray-600 mb-1">店鋪名稱 (Nom du magasin)</label>
+          <input type="text" id="setting-store-name-input" placeholder="Cici Cuisine" class="w-full border p-2 rounded-lg text-xs bg-white text-gray-700">
+        </div>
+    
+        <div>
+          <label class="block text-xs font-bold text-gray-600 mb-1">店鋪標語 (Slogan)</label>
+          <input type="text" id="setting-store-slogan-input" placeholder="🕒 Livraison | 配送" class="w-full border p-2 rounded-lg text-xs bg-white text-gray-700">
+        </div>
+    
+        <button type="button" onclick="saveStoreInfo()" class="w-full bg-green-500 hover:bg-green-600 text-white text-xs font-bold py-2.5 rounded-lg transition shadow-sm">
+          儲存店鋪資訊
+        </button>
+        <p id="store-info-save-status" class="text-xs mt-1 text-center hidden"></p>
       </div>
     </div>
     
