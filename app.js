@@ -2,7 +2,14 @@ const SUPABASE_URL = 'https://zcivplddxtaqlefrtajr.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_eQG7FVgOU36Z8edfnrf27w_5A7tlNiq';
 const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-const STORE_CONFIG = {
+// 原本寫死的：
+// const STORE_CONFIG = {
+//   whatsappNumber: "85292773583", 
+//   storeName: "Cici Cuisine"
+// };
+
+// 改為：
+let STORE_CONFIG = {
   whatsappNumber: "85292773583", 
   storeName: "Cici Cuisine"
 };
@@ -1155,7 +1162,7 @@ async function deleteDish(event, id, nameZh) {
 window.addEventListener('DOMContentLoaded', () => {
   fetchMenu();
   checkUrlAdminParam();
-  
+  loadStoreSettings(); // 👈 載入動態設定
   updateBusinessStatusBar();
   setInterval(updateBusinessStatusBar, 60000);
 });
@@ -1311,5 +1318,62 @@ async function markWhatsappClicked(orderId) {
       .eq('id', orderId);
   } catch (e) {
     console.error('更新 WhatsApp 點擊狀態失敗:', e);
+  }
+}
+
+// 1. 從 Supabase 載入 WhatsApp 設定
+async function loadStoreSettings() {
+  try {
+    const { data, error } = await supabaseClient
+      .from('store_settings')
+      .select('whatsapp_number')
+      .eq('id', 1)
+      .single();
+
+    if (data && data.whatsapp_number) {
+      STORE_CONFIG.whatsappNumber = data.whatsapp_number;
+      
+      // 如果後台介面有輸入框，同步更新顯示
+      const inputEl = document.getElementById('setting-whatsapp-input');
+      if (inputEl) inputEl.value = STORE_CONFIG.whatsappNumber;
+    }
+  } catch (err) {
+    console.error("載入設定失敗:", err);
+  }
+}
+
+// 2. 儲存 WhatsApp 設定至 Supabase
+async function saveWhatsAppNumber() {
+  const inputEl = document.getElementById('setting-whatsapp-input');
+  const statusEl = document.getElementById('whatsapp-save-status');
+  if (!inputEl) return;
+
+  const newNumber = inputEl.value.trim().replace(/[^0-9]/g, '');
+  if (!newNumber) {
+    alert("請輸入有效的電話號碼！");
+    return;
+  }
+
+  try {
+    const { error } = await supabaseClient
+      .from('store_settings')
+      .update({ whatsapp_number: newNumber, updated_at: new Date() })
+      .eq('id', 1);
+
+    if (error) throw error;
+
+    STORE_CONFIG.whatsappNumber = newNumber;
+
+    if (statusEl) {
+      statusEl.innerText = "✅ WhatsApp 接收號碼已成功更新！";
+      statusEl.className = "text-sm mt-2 text-green-600 font-medium block";
+      setTimeout(() => { statusEl.className = "text-sm mt-2 hidden"; }, 3000);
+    }
+  } catch (err) {
+    console.error("儲存失敗:", err);
+    if (statusEl) {
+      statusEl.innerText = "❌ 儲存失敗";
+      statusEl.className = "text-sm mt-2 text-red-600 font-medium block";
+    }
   }
 }
