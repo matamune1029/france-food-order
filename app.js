@@ -1346,9 +1346,11 @@ async function loadStoreSettings() {
     if (data && data.whatsapp_number) {
       STORE_CONFIG.whatsappNumber = data.whatsapp_number;
       
-      // 如果後台介面有輸入框，同步更新顯示
+      // 🌟 關鍵：將資料庫裡的現有號碼自動填入後台的輸入框中，讓老闆看得見！
       const inputEl = document.getElementById('setting-whatsapp-input');
-      if (inputEl) inputEl.value = STORE_CONFIG.whatsappNumber;
+      if (inputEl) {
+        inputEl.value = STORE_CONFIG.whatsappNumber;
+      }
     }
   } catch (err) {
     console.error("載入設定失敗:", err);
