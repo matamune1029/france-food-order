@@ -696,21 +696,34 @@ function checkUrlAdminParam() {
 function switchAdminTab(tab) {
   const ordersTab = document.getElementById('admin-orders-tab');
   const menuTab = document.getElementById('admin-menu-tab');
+  const settingsTab = document.getElementById('admin-settings-tab');
   const ordersBtn = document.getElementById('tab-orders-btn');
   const menuBtn = document.getElementById('tab-menu-btn');
+  const settingsBtn = document.getElementById('tab-settings-btn');
+
+  // 先將所有分頁隱藏，所有按鈕恢復預設樣式
+  ordersTab.classList.add('hidden');
+  menuTab.classList.add('hidden');
+  settingsTab.classList.add('hidden');
+  
+  ordersBtn.className = "flex-1 py-2 rounded-lg text-gray-500 transition";
+  menuBtn.className = "flex-1 py-2 rounded-lg text-gray-500 transition";
+  settingsBtn.className = "flex-1 py-2 rounded-lg text-gray-500 transition";
+
+  const activeClass = "flex-1 py-2 rounded-lg bg-white shadow text-gray-800 transition";
 
   if (tab === 'orders') {
     ordersTab.classList.remove('hidden');
-    menuTab.classList.add('hidden');
-    ordersBtn.className = "flex-1 py-2 rounded-lg bg-white shadow text-gray-800 transition";
-    menuBtn.className = "flex-1 py-2 rounded-lg text-gray-500 transition";
+    ordersBtn.className = activeClass;
     fetchOrders();
-  } else {
-    ordersTab.classList.add('hidden');
+  } else if (tab === 'menu') {
     menuTab.classList.remove('hidden');
-    menuBtn.className = "flex-1 py-2 rounded-lg bg-white shadow text-gray-800 transition";
-    ordersBtn.className = "flex-1 py-2 rounded-lg text-gray-500 transition";
+    menuBtn.className = activeClass;
     fetchAdminMenu();
+  } else if (tab === 'settings') {
+    settingsTab.classList.remove('hidden');
+    settingsBtn.className = activeClass;
+    // 如果未來設定頁面需要載入資料，可以在這裡呼叫
   }
 }
 
