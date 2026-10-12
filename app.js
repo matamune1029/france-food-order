@@ -76,18 +76,22 @@ function checkIsBusinessOpen() {
 }
 
 // 🌐 更新網頁頂部狀態與結算按鈕狀態
+// 🌐 更新網頁頂部狀態與結算按鈕狀態
 function updateBusinessStatusBar() {
   const banner = document.getElementById('business-status-banner');
   const checkoutBtn = document.getElementById('checkout-btn');
   const isOpen = checkIsBusinessOpen();
 
+  // 取得目前設定的營業時間文字（若無則給預設值）
+  const hoursText = STORE_CONFIG.storeHoursText || "🕒 12:00 - 14:00 (Lundi - Samedi)";
+
   if (banner) {
     if (isOpen) {
       banner.className = "bg-green-500 text-white text-center py-1.5 px-4 text-xs font-bold transition-all shadow-sm";
-      banner.innerHTML = "🟢 營業中 (Ouvert) ";
+      banner.innerHTML = `🟢 營業中 (Ouvert) — ${hoursText}`;
     } else {
       banner.className = "bg-red-500 text-white text-center py-1.5 px-4 text-xs font-bold transition-all shadow-sm";
-      banner.innerHTML = "🔴 非營業時間 (Fermé) ";
+      banner.innerHTML = `🔴 非營業時間 (Fermé) — ${hoursText}，暫不接受下單`;
     }
   }
 
