@@ -84,10 +84,10 @@ function updateBusinessStatusBar() {
   if (banner) {
     if (isOpen) {
       banner.className = "bg-green-500 text-white text-center py-1.5 px-4 text-xs font-bold transition-all shadow-sm";
-      banner.innerHTML = "🟢 營業中 (Ouvert) — 營業時間：週一至週六 09:00 - 20:00";
+      banner.innerHTML = "🟢 營業中 (Ouvert) ";
     } else {
       banner.className = "bg-red-500 text-white text-center py-1.5 px-4 text-xs font-bold transition-all shadow-sm";
-      banner.innerHTML = "🔴 非營業時間 (Fermé) — 營業時間為週一至週六 09:00 - 20:00，暫不接受下單";
+      banner.innerHTML = "🔴 非營業時間 (Fermé) ";
     }
   }
 
