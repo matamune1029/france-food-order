@@ -664,25 +664,56 @@ function handleSecretClick() {
 
 let isAdminLoggedIn = false;
 
-function toggleMode(forceCheck = false) {
+async function toggleMode(forceCheck = false) {
   const adminView = document.getElementById('admin-view');
   const customerView = document.getElementById('customer-view');
 
+  // 如果目前是準備進入後台，且尚未登入
   if ((adminView.classList.contains('hidden') || forceCheck) && !isAdminLoggedIn) {
     const password = prompt("🔐 Mot de passe Admin / 請輸入群主管理密碼：");
-    if (password !== "8888") {
-      return alert("❌ Mot de passe incorrect / 密碼錯誤！");
+    if (!password) return; // 使用者按取消
+
+    try {
+      // 每次都強制從 Supabase 資料庫撈取最新的密碼（不使用快取）
+      const { data, error } = await supabaseClient
+        .from('store_settings')
+        .select('admin_password')
+        .eq('id', 1)
+        .single();
+
+      if (error) {
+        console.error("讀取密碼錯誤:", error);
+      }
+
+      // 優先使用資料庫中的密碼，若無則預設為 "8888"
+      const correctPassword = (data && data.admin_password) ? data.admin_password : "8888";
+
+      if (password !== correctPassword) {
+        return alert("❌ Mot de passe incorrect / 密碼錯誤！");
+      }
+    } catch (err) {
+      console.error("驗證密碼異常:", err);
+      if (password !== "8888") {
+        return alert("❌ Mot de passe incorrect / 密碼錯誤！");
+      }
     }
+
     isAdminLoggedIn = true;
   }
 
+  // 切換畫面顯示
   adminView.classList.toggle('hidden');
   customerView.classList.toggle('hidden');
 
   if (!adminView.classList.contains('hidden')) {
+    // 進入後台時載入資料
     fetchOrders();
     initAdminRealtimeListener(); 
   } else {
+    // 🌟 當點擊「返回前台」離開後台時，把登入狀態重設為 false
+    // 這樣下次再點「後台」時，就會重新跳出密碼輸入框，並驗證你剛改好的新密碼！
+    isAdminLoggedIn = false;
+
     if (orderChannel) {
       supabaseClient.removeChannel(orderChannel);
       orderChannel = null;
