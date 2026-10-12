@@ -23,7 +23,8 @@
         <div class="space-y-0.5 mt-1">
           <!-- 🌟 這裡加上 id="store-slogan-text" -->
           <p id="store-slogan-text" class="text-xs opacity-90">🕒 Livraison | 配送</p>
-          <p class="text-[11px] opacity-80 font-medium">🕒 12:00 - 14:00 (Lundi - Samedi)</p>
+          <!-- 🌟 加上 id="store-hours-text" 方便動態替換 -->
+          <p id="store-hours-text" class="text-[11px] opacity-80 font-medium">🕒 12:00 - 14:00 (Lundi - Samedi)</p>
         </div>
       </div>
       <div class="flex items-center gap-2">
@@ -291,6 +292,36 @@
           儲存店鋪資訊
         </button>
         <p id="store-info-save-status" class="text-xs mt-1 text-center hidden"></p>
+      </div>
+      <!-- 🌟 新增：營業狀態與時間設定區塊 -->
+      <div class="bg-white p-4 rounded-xl shadow-sm border space-y-3">
+        <h3 class="font-bold text-gray-800 text-sm border-b pb-2">⏰ 營業狀態與時間設定 / Mode d'ouverture</h3>
+      
+        <div>
+          <label class="block text-xs font-bold text-gray-600 mb-1">營業時間標語 (Horaire d'ouverture)</label>
+          <input type="text" id="setting-hours-text-input" placeholder="🕒 12:00 - 14:00 (Lundi - Samedi)" class="w-full border p-2 rounded-lg text-xs bg-white text-gray-700">
+        </div>
+      
+        <div>
+          <label class="block text-xs font-bold text-gray-600 mb-1">營業狀態控制模式 (Mode de contrôle)</label>
+          <select id="setting-business-mode-select" onchange="toggleManualOpenOption()" class="w-full border p-2 rounded-lg text-xs bg-white text-gray-700 font-bold">
+            <option value="auto">🤖 自動模式（按巴黎時間系統自動判斷）</option>
+            <option value="manual">✋ 手動模式（由群主強制指定開關）</option>
+          </select>
+        </div>
+      
+        <div id="manual-open-container" class="hidden bg-gray-50 p-2.5 rounded-lg border">
+          <label class="block text-xs font-bold text-gray-600 mb-1">手動模式狀態 (Statut manuel)</label>
+          <select id="setting-manual-open-select" class="w-full border p-2 rounded-lg text-xs bg-white text-gray-700 font-bold">
+            <option value="true">🟢 強制營業中 (Ouvert)</option>
+            <option value="false">🔴 強制暫停營業 / 公休 (Fermé)</option>
+          </select>
+        </div>
+      
+        <button type="button" onclick="saveBusinessHoursInfo()" class="w-full bg-green-500 hover:bg-green-600 text-white text-xs font-bold py-2.5 rounded-lg transition shadow-sm">
+          儲存營業設定
+        </button>
+        <p id="business-hours-save-status" class="text-xs mt-1 text-center hidden"></p>
       </div>
     </div>
     
