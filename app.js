@@ -1836,3 +1836,17 @@ async function submitNewPassword() {
     alert("❌ 更新失敗: " + err.message);
   }
 }
+
+async function adminLogout() {
+  const confirmLogout = confirm("⚠️ 確定要登出管理員帳號嗎？\n確定後下次進入後台需要重新輸入密碼。");
+  if (!confirmLogout) return;
+
+  await supabaseClient.auth.signOut();
+  isAdminLoggedIn = false;
+  
+  // 隱藏後台、回到前台
+  document.getElementById('admin-view').classList.add('hidden');
+  document.getElementById('customer-view').classList.remove('hidden');
+  
+  alert("✅ 已成功登出！");
+}
