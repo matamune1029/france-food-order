@@ -67,63 +67,94 @@ function generateOrderCode() {
 
 // ⏰ 檢查是否在營業時間內 (13:00 - 次日 10:00；10:00 - 13:00 為休息)
 // ⏰ 檢查是否在營業時間內（動態從 STORE_CONFIG.storeHoursText 解析，支援跨日如 16:00 - 10:00）
-// ⏰ 精準跨日送餐日營業判斷：依據「目標送餐日」與 13:00 - 10:00 窗口計算
 // ⏰ 動態解析後台營業時間標語，並精準計算跨日送餐日與營業狀態
-// 🌟 整合版：含防呆驗證的營業時間與送餐日儲存函式
-async function saveBusinessHoursInfo() {
-  const hoursInput = document.getElementById('setting-hours-text-input');
-  const modeSelect = document.getElementById('setting-business-mode-select');
-  const manualSelect = document.getElementById('setting-manual-open-select');
-  const statusEl = document.getElementById('business-hours-save-status');
-
-  // 1. 抓取勾選的星期
-  const checkboxes = document.querySelectorAll('.day-checkbox:checked');
-  const selectedDays = Array.from(checkboxes).map(chk => parseInt(chk.value, 10));
-
-  if (!hoursInput || !modeSelect || !manualSelect) return;
-
-  const newHoursText = hoursInput.value.trim() || "🕒 13:00 - 10:00 (Lundi - Dimanche)";
-  const newMode = modeSelect.value;
-  const newManualOpen = manualSelect.value === 'true';
-
+function checkIsBusinessOpen() {
+  if (STORE_CONFIG.businessMode === 'manual') {
+    return STORE_CONFIG.manualOpen;
+  }
   try {
-    // 2. 一併寫入 Supabase
-    const { error } = await supabaseClient
-      .from('store_settings')
-      .update({ 
-        store_hours_text: newHoursText, 
-        business_mode: newMode, 
-        manual_open: newManualOpen,
-        allowed_days: selectedDays,
-        updated_at: new Date() 
-      })
-      .eq('id', 1);
+    const now = new Date();
+    const formatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'Europe/Paris',
+      weekday: 'short',
+      hour: 'numeric',
+      minute: 'numeric',
+      hour12: false
+    });
+    
+    const parts = formatter.formatToParts(now);
+    let weekdayStr = '';
+    let hour = 0;
+    let minute = 0;
 
-    if (error) throw error;
+    parts.forEach(p => {
+      if (p.type === 'weekday') weekdayStr = p.value;
+      if (p.type === 'hour') hour = parseInt(p.value, 10);
+      if (p.type === 'minute') minute = parseInt(p.value, 10);
+    });
 
-    STORE_CONFIG.storeHoursText = newHoursText;
-    STORE_CONFIG.businessMode = newMode;
-    STORE_CONFIG.manualOpen = newManualOpen;
-    STORE_CONFIG.allowedDays = selectedDays;
+    const weekdayMap = { 'Sun': 0, 'Mon': 1, 'Tue': 2, 'Wed': 3, 'Thu': 4, 'Fri': 5, 'Sat': 6 };
+    const currentDayNum = weekdayMap[weekdayStr] ?? 1;
+    const totalMinutes = hour * 60 + minute;
 
-    const hoursEl = document.getElementById('store-hours-text');
-    if (hoursEl) hoursEl.innerText = newHoursText;
+    // 🌟 1. 動態從後台設定的「營業時間標語」中抓取開始與結束時間（例如 "16:00 - 15:00"）
+    let openMinutes = 13 * 60;   // 預設開門 13:00
+    let closeMinutes = 10 * 60;  // 預設關門 10:00（次日）
 
-    updateBusinessStatusBar();
-
-    if (statusEl) {
-      statusEl.innerText = "✅ 營業與送餐日設定已成功更新！";
-      statusEl.className = "text-xs mt-1 text-green-600 font-bold block text-center";
-      setTimeout(() => { statusEl.className = "text-xs mt-1 hidden text-center"; }, 3000);
+    const text = STORE_CONFIG.storeHoursText || "";
+    const match = text.match(/(\d{1,2}):(\d{2})\s*-\s*(\d{1,2}):(\d{2})/);
+    if (match) {
+      openMinutes = parseInt(match[1], 10) * 60 + parseInt(match[2], 10);
+      closeMinutes = parseInt(match[3], 10) * 60 + parseInt(match[4], 10);
     }
-  } catch (err) {
-    console.error("儲存失敗:", err);
-    if (statusEl) {
-      statusEl.innerText = "❌ 儲存失敗";
-      statusEl.className = "text-xs mt-1 text-red-600 font-bold block text-center";
+
+    // 🌟 2. 判斷當前時間是否落在營業/下單窗口內，並決定「目標送餐日」
+    let targetDeliveryDay = currentDayNum;
+    let isOpenTime = false;
+
+    if (openMinutes > closeMinutes) {
+      // 跨日營業邏輯（例如 16:00 到次日 15:00）
+      if (totalMinutes >= openMinutes) {
+        // 例如 16:00 之後下的單，送餐日是「明天」
+        targetDeliveryDay = (currentDayNum + 1) % 7;
+        isOpenTime = true;
+      } else if (totalMinutes < closeMinutes) {
+        // 例如 00:00 到 15:00 之間下的單，送餐日是「今天」
+        targetDeliveryDay = currentDayNum;
+        isOpenTime = true;
+      } else {
+        // 介於關門與開門之間（休息時間）
+        isOpenTime = false;
+      }
+    } else {
+      // 同日營業邏輯（如果老闆設定同一天內開關門）
+      if (totalMinutes >= openMinutes && totalMinutes <= closeMinutes) {
+        targetDeliveryDay = currentDayNum;
+        isOpenTime = true;
+      } else {
+        isOpenTime = false;
+      }
     }
+
+    // 如果時間不在營業窗口內，直接回傳 false
+    if (!isOpenTime) {
+      return false;
+    }
+
+    // 🌟 3. 檢查計算出來的「目標送餐日」是否在後台勾選的 allowedDays 內
+    if (Array.isArray(STORE_CONFIG.allowedDays) && STORE_CONFIG.allowedDays.length > 0) {
+      if (!STORE_CONFIG.allowedDays.includes(targetDeliveryDay)) {
+        return false; // 目標送餐日沒勾選，不營業
+      }
+    }
+
+    return true; // 時間符合 ＆ 目標送餐日有營業！
+  } catch (e) {
+    console.error('Time check error:', e);
+    return true; 
   }
 }
+
 // 🗓️ 根據當前時間自動鎖定下單的日期選項（13:00-凌晨只能選明天，凌晨-10:00只能選今天）
 function updateCheckoutDateOptions() {
   const dateSelect = document.getElementById('cust-date');
@@ -1617,42 +1648,13 @@ async function saveBusinessHoursInfo() {
   const manualSelect = document.getElementById('setting-manual-open-select');
   const statusEl = document.getElementById('business-hours-save-status');
 
-  if (!hoursInput || !modeSelect || !manualSelect) return;
-
-  const newHoursText = hoursInput.value.trim() || "🕒 13:00 - 10:00 (Lundi - Dimanche)";
-
-  // 🛡️ 防呆驗證：檢查時間邏輯是否合理
-  const match = newHoursText.match(/(\d{1,2}):(\d{2})\s*-\s*(\d{1,2}):(\d{2})/);
-  if (match) {
-    const startH = parseInt(match[1], 10);
-    const startM = parseInt(match[2], 10);
-    const endH = parseInt(match[3], 10);
-    const endM = parseInt(match[4], 10);
-
-    const startMin = startH * 60 + startM;
-    const endMin = endH * 60 + endM;
-
-    // 1. 開始與結束時間不能完全相同
-    if (startMin === endMin) {
-      alert("❌ 營業時間設定錯誤：開始時間與結束時間不能相同！");
-      return;
-    }
-
-    // 2. 如果結束時間小於開始時間（代表是跨日營業，例如 13:00 - 10:00）
-    if (startMin > endMin) {
-      // 限制合法跨日：必須是下午或晚上開始（>= 12:00），且在隔天中午前結束（<= 12:00）
-      const isLegalCrossDay = (startH >= 12 && endH <= 12);
-      if (!isLegalCrossDay) {
-        alert("❌ 營業時間設定錯誤：不合法的跨日時間範圍！");
-        return;
-      }
-    }
-  }
-
   // 1. 抓取勾選的星期
   const checkboxes = document.querySelectorAll('.day-checkbox:checked');
   const selectedDays = Array.from(checkboxes).map(chk => parseInt(chk.value, 10));
 
+  if (!hoursInput || !modeSelect || !manualSelect) return;
+
+  const newHoursText = hoursInput.value.trim() || "🕒 13:00 - 10:00 (Lundi - Dimanche)";
   const newMode = modeSelect.value;
   const newManualOpen = manualSelect.value === 'true';
 
@@ -1694,6 +1696,7 @@ async function saveBusinessHoursInfo() {
     }
   }
 }
+
 // 🔑 修改後台密碼函式
 async function saveAdminPassword() {
   const oldPassInput = document.getElementById('setting-old-password');
