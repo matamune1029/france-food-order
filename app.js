@@ -818,35 +818,37 @@ function handleSecretClick() {
 
 let isAdminLoggedIn = false;
 
+let isAdminLoggedIn = false;
+
 async function toggleMode(forceCheck = false) {
   const adminView = document.getElementById('admin-view');
   const customerView = document.getElementById('customer-view');
 
   if ((adminView.classList.contains('hidden') || forceCheck) && !isAdminLoggedIn) {
-    const password = prompt("🔐 Mot de passe Admin / 請輸入群主管理密碼：");
+    // 💡 為了方便，我們讓老闆直接輸入密碼（或改成輸入信箱與密碼）
+    const password = prompt("🔐 請輸入管理員密碼 (Mot de passe Admin)：");
     if (!password) return;
 
     try {
-      const { data, error } = await supabaseClient
-        .from('store_settings')
-        .select('admin_password')
-        .eq('id', 1)
-        .single();
+      // 🌟 使用 Supabase Auth 官方安全驗證（預設綁定你的管理員信箱）
+      const adminEmail = "admin@cicicuisine.com"; // 請改成你在第一步建立的信箱
+      
+      const { data, error } = await supabaseClient.auth.signInWithPassword({
+        email: adminEmail,
+        password: password
+      });
 
-      if (error) console.error("讀取密碼錯誤:", error);
-      const correctPassword = (data && data.admin_password) ? data.admin_password : "8888";
-
-      if (password !== correctPassword) {
-        return alert("❌ Mot de passe incorrect / 密碼錯誤！");
+      if (error) {
+        alert("❌ 登入失敗 / Mot de passe incorrect：" + error.message);
+        return;
       }
+
+      isAdminLoggedIn = true;
     } catch (err) {
-      console.error("驗證密碼異常:", err);
-      if (password !== "8888") {
-        return alert("❌ Mot de passe incorrect / 密碼錯誤！");
-      }
+      console.error("登入異常:", err);
+      alert("❌ 系統登入發生錯誤！");
+      return;
     }
-
-    isAdminLoggedIn = true;
   }
 
   adminView.classList.toggle('hidden');
@@ -856,6 +858,8 @@ async function toggleMode(forceCheck = false) {
     fetchOrders();
     initAdminRealtimeListener(); 
   } else {
+    // 離開後台時自動登出，確保安全
+    supabaseClient.auth.signOut();
     isAdminLoggedIn = false;
     if (orderChannel) {
       supabaseClient.removeChannel(orderChannel);
