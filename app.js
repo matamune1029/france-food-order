@@ -452,7 +452,10 @@ async function submitOrder() {
     });
     
     const total = parseFloat(document.getElementById('total-price').innerText);
-    const orderId = 'CC-' + Date.now().toString().slice(-6);
+    // 產生不重複的訂單編號（例如：CC-261013-A3K9）
+    const dateStr = new Date().toISOString().slice(2, 10).replace(/-/g, ''); // 取得 YYMMDD
+    const randomStr = Math.random().toString(36).substring(2, 6).toUpperCase(); // 4位隨機碼
+    const orderId = `CC-${dateStr}-${randomStr}`;
     const deliverySlot = `${dateSelect} - ${timeSelect}`;
 
     const fullContactInfo = `[${deliverySlot}] ${phone} | Adresse: ${address}${note ? ' | Note: ' + note : ''}`;
