@@ -808,36 +808,44 @@ function handleSecretClick() {
 let isAdminLoggedIn = false;
 
 // 🌟 單一且正確的 toggleMode 函式（支援輸入信箱與密碼）
+// 🌟 修正後的 toggleMode 函式：會自動向 Supabase 檢查是否已登入
 async function toggleMode(forceCheck = false) {
   const adminView = document.getElementById('admin-view');
   const customerView = document.getElementById('customer-view');
 
-  if ((adminView.classList.contains('hidden') || forceCheck) && !isAdminLoggedIn) {
-    const adminEmail = prompt("📧 請輸入管理員信箱 (Email Admin)：");
-    if (!adminEmail) return;
+  // 如果後台目前是隱藏的（代表要打開後台）
+  if (adminView.classList.contains('hidden') || forceCheck) {
+    
+    // 1. 先主動問 Supabase 目前有沒有記住登入的帳號
+    const { data: { session } } = await supabaseClient.auth.getSession();
 
-    const password = prompt("🔐 請輸入管理員密碼 (Mot de passe Admin)：");
-    if (!password) return;
+    // 2. 如果 Supabase 裡面「沒有」登入記錄，才跳出視窗要求輸入帳密
+    if (!session) {
+      const adminEmail = prompt("📧 請輸入管理員信箱 (Email Admin)：");
+      if (!adminEmail) return;
 
-    try {
-      const { data, error } = await supabaseClient.auth.signInWithPassword({
-        email: adminEmail.trim(),
-        password: password
-      });
+      const password = prompt("🔐 請輸入管理員密碼 (Mot de passe Admin)：");
+      if (!password) return;
 
-      if (error) {
-        alert("❌ 登入失敗 / Identifiants incorrects：" + error.message);
+      try {
+        const { data, error } = await supabaseClient.auth.signInWithPassword({
+          email: adminEmail.trim(),
+          password: password
+        });
+
+        if (error) {
+          alert("❌ 登入失敗 / Identifiants incorrects：" + error.message);
+          return;
+        }
+      } catch (err) {
+        console.error("登入異常:", err);
+        alert("❌ 系統登入發生錯誤！");
         return;
       }
-
-      isAdminLoggedIn = true;
-    } catch (err) {
-      console.error("登入異常:", err);
-      alert("❌ 系統登入發生錯誤！");
-      return;
     }
   }
 
+  // 切換前台與後台的顯示狀態
   adminView.classList.toggle('hidden');
   customerView.classList.toggle('hidden');
 
@@ -845,8 +853,7 @@ async function toggleMode(forceCheck = false) {
     fetchOrders();
     initAdminRealtimeListener(); 
   } else {
-    // supabaseClient.auth.signOut();
-    isAdminLoggedIn = false;
+    // 這裡保留不自動登出，讓老闆下次點開能直接進來
     if (orderChannel) {
       supabaseClient.removeChannel(orderChannel);
       orderChannel = null;
