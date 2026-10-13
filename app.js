@@ -66,6 +66,7 @@ function generateOrderCode() {
 }
 
 // ⏰ 檢查是否在營業時間內 (13:00 - 次日 10:00；10:00 - 13:00 為休息)
+// ⏰ 檢查是否在營業時間內（動態從 STORE_CONFIG.storeHoursText 解析，支援跨日如 16:00 - 10:00）
 function checkIsBusinessOpen() {
   if (STORE_CONFIG.businessMode === 'manual') {
     return STORE_CONFIG.manualOpen;
@@ -91,7 +92,6 @@ function checkIsBusinessOpen() {
       if (p.type === 'minute') minute = parseInt(p.value, 10);
     });
 
-    // 轉換星期格式對應 JS getDay() (Sun=0, Mon=1 ... Sat=6)
     const weekdayMap = { 'Sun': 0, 'Mon': 1, 'Tue': 2, 'Wed': 3, 'Thu': 4, 'Fri': 5, 'Sat': 6 };
     const currentDayNum = weekdayMap[weekdayStr] ?? 1;
 
@@ -102,11 +102,29 @@ function checkIsBusinessOpen() {
       }
     }
 
+    // 🌟 預設營業時間（以防萬一）
+    let openMinutes = 13 * 60;   // 13:00
+    let closeMinutes = 10 * 60;  // 次日 10:00
+
+    // 🌟 從後台設定的「營業時間標語」中自動抓取數字（例如抓取 "16:00 - 10:00" 或 "14:00 - 22:00"）
+    const text = STORE_CONFIG.storeHoursText || "";
+    const match = text.match(/(\d{1,2}):(\d{2})\s*-\s*(\d{1,2}):(\d{2})/);
+    if (match) {
+      openMinutes = parseInt(match[1], 10) * 60 + parseInt(match[2], 10);
+      closeMinutes = parseInt(match[3], 10) * 60 + parseInt(match[4], 10);
+    }
+
     const totalMinutes = hour * 60 + minute;
-    // 營業時間：13:00 (780分) 至 次日 10:00 (600分)
-    // 也就是大於等於 780 分鐘，或是小於 600 分鐘
-    const isOpen = (totalMinutes >= 780 || totalMinutes < 600);
-    return isOpen;
+
+    // 判斷是否為跨日營業（例如開始時間 16:00 大於結束時間 10:00）
+    if (openMinutes > closeMinutes) {
+      // 跨日邏輯：大於等於開始時間，或者小於結束時間
+      return (totalMinutes >= openMinutes || totalMinutes < closeMinutes);
+    } else {
+      // 一般同日邏輯：介於開始與結束之間
+      return (totalMinutes >= openMinutes && totalMinutes <= closeMinutes);
+    }
+
   } catch (e) {
     console.error('Time check error:', e);
     return true; 
