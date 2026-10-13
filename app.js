@@ -2,20 +2,14 @@ const SUPABASE_URL = 'https://zcivplddxtaqlefrtajr.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_eQG7FVgOU36Z8edfnrf27w_5A7tlNiq';
 const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-// 原本寫死的：
-// const STORE_CONFIG = {
-//   whatsappNumber: "85292773583", 
-//   storeName: "Cici Cuisine"
-// };
-
-// 改為：
 let STORE_CONFIG = {
   whatsappNumber: "85292773583", 
   storeName: "Cici Cuisine",
   storeSlogan: "🕒 Livraison | 配送",
-  storeHoursText: "🕒 12:00 - 14:00 (Lundi - Samedi)",
+  storeHoursText: "🕒 13:00 - 10:00 (Lundi - Dimanche)",
   businessMode: "auto",
-  manualOpen: true
+  manualOpen: true,
+  allowedDays: [1, 4] // 預設週一(1)與週四(4)
 };
 
 let cart = {};
@@ -60,9 +54,9 @@ function resolveDeliveryDate(dateSelect) {
   return getParisDateStr(isTomorrow ? 1 : 0);
 }
 
-// 🧾 產生訂單編號：CC-YYMMDD-XXXX（巴黎日期 + 4 位隨機碼，避開 0/O/1/I 等易混淆字元）
+// 🧾 產生訂單編號：CC-YYMMDD-XXXX（巴黎日期 + 4 位隨機碼）
 function generateOrderCode() {
-  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // 32 個字元
+  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   const bytes = new Uint8Array(4);
   crypto.getRandomValues(bytes);
   let rand = '';
@@ -71,10 +65,8 @@ function generateOrderCode() {
   return `CC-${yymmdd}-${rand}`;
 }
 
-// ⏰ 檢查是否在營業時間內（週一至週六 09:00 - 20:00 法國巴黎時間）
-// ⏰ 檢查是否在營業時間內（自動解析你設定的時間範圍）
+// ⏰ 檢查是否在營業時間內 (13:00 - 次日 10:00；10:00 - 13:00 為休息)
 function checkIsBusinessOpen() {
-  // 如果設定為手動模式，直接回傳手動開關狀態
   if (STORE_CONFIG.businessMode === 'manual') {
     return STORE_CONFIG.manualOpen;
   }
@@ -89,47 +81,86 @@ function checkIsBusinessOpen() {
     });
     
     const parts = formatter.formatToParts(now);
-    let weekday = '';
+    let weekdayStr = '';
     let hour = 0;
     let minute = 0;
 
     parts.forEach(p => {
-      if (p.type === 'weekday') weekday = p.value;
+      if (p.type === 'weekday') weekdayStr = p.value;
       if (p.type === 'hour') hour = parseInt(p.value, 10);
       if (p.type === 'minute') minute = parseInt(p.value, 10);
     });
 
-    if (weekday === 'Sun') return false;
+    // 轉換星期格式對應 JS getDay() (Sun=0, Mon=1 ... Sat=6)
+    const weekdayMap = { 'Sun': 0, 'Mon': 1, 'Tue': 2, 'Wed': 3, 'Thu': 4, 'Fri': 5, 'Sat': 6 };
+    const currentDayNum = weekdayMap[weekdayStr] ?? 1;
 
-    // 預設時間範圍（以防萬一）
-    let openMinutes = 12 * 60;   
-    let closeMinutes = 15 * 60; 
-
-    // 🌟 自動從你輸入的「營業時間標語」中抓取時間（例如 12:00 - 15:00）
-    const text = STORE_CONFIG.storeHoursText || "";
-    const match = text.match(/(\d{1,2}):(\d{2})\s*-\s*(\d{1,2}):(\d{2})/);
-    if (match) {
-      openMinutes = parseInt(match[1], 10) * 60 + parseInt(match[2], 10);
-      closeMinutes = parseInt(match[3], 10) * 60 + parseInt(match[4], 10);
+    // 檢查今天是否在群主設定的允許送餐日中
+    if (Array.isArray(STORE_CONFIG.allowedDays) && STORE_CONFIG.allowedDays.length > 0) {
+      if (!STORE_CONFIG.allowedDays.includes(currentDayNum)) {
+        return false; // 不在允許的星期內
+      }
     }
 
     const totalMinutes = hour * 60 + minute;
-    return totalMinutes >= openMinutes && totalMinutes <= closeMinutes;
+    // 營業時間：13:00 (780分) 至 次日 10:00 (600分)
+    // 也就是大於等於 780 分鐘，或是小於 600 分鐘
+    const isOpen = (totalMinutes >= 780 || totalMinutes < 600);
+    return isOpen;
   } catch (e) {
     console.error('Time check error:', e);
     return true; 
   }
 }
 
-// 🌐 更新網頁頂部狀態與結算按鈕狀態
+// 🗓️ 根據當前時間自動鎖定下單的日期選項（13:00-凌晨只能選明天，凌晨-10:00只能選今天）
+function updateCheckoutDateOptions() {
+  const dateSelect = document.getElementById('cust-date');
+  if (!dateSelect) return;
+
+  try {
+    const now = new Date();
+    const formatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'Europe/Paris',
+      hour: 'numeric',
+      minute: 'numeric',
+      hour12: false
+    });
+    let hour = 0;
+    formatter.formatToParts(now).forEach(p => {
+      if (p.type === 'hour') hour = parseInt(p.value, 10);
+    });
+
+    // 清空並重新組合選項
+    dateSelect.innerHTML = '<option value="">-- Choisir le jour / 請選擇日期 --</option>';
+
+    if (hour >= 13) {
+      // 13:00 到 23:59：只能選明天
+      dateSelect.innerHTML += `<option value="Demain (明天)">Demain / 明天 (${getParisDateStr(1)})</option>`;
+      dateSelect.value = "Demain (明天)";
+    } else if (hour < 10) {
+      // 00:00 到 10:00：只能選今天
+      dateSelect.innerHTML += `<option value="Aujourd'hui (當天)">Aujourd'hui / 當天 (${getParisDateStr(0)})</option>`;
+      dateSelect.value = "Aujourd'hui (當天)";
+    } else {
+      // 10:00 到 13:00 休息時間
+      dateSelect.innerHTML += `
+        <option value="Aujourd'hui (當天)">Aujourd'hui / 當天</option>
+        <option value="Demain (明天)">Demain / 明天</option>
+      `;
+    }
+  } catch (e) {
+    console.error('Update date options error:', e);
+  }
+}
+
 // 🌐 更新網頁頂部狀態與結算按鈕狀態
 function updateBusinessStatusBar() {
   const banner = document.getElementById('business-status-banner');
   const checkoutBtn = document.getElementById('checkout-btn');
   const isOpen = checkIsBusinessOpen();
 
-  // 取得目前設定的營業時間文字（若無則給預設值）
-  const hoursText = STORE_CONFIG.storeHoursText || "🕒 12:00 - 14:00 (Lundi - Samedi)";
+  const hoursText = STORE_CONFIG.storeHoursText || "🕒 13:00 - 10:00";
 
   if (banner) {
     if (isOpen) {
@@ -137,11 +168,10 @@ function updateBusinessStatusBar() {
       banner.innerHTML = `🟢 營業中 (Ouvert) — ${hoursText}`;
     } else {
       banner.className = "bg-red-500 text-white text-center py-1.5 px-4 text-xs font-bold transition-all shadow-sm";
-      banner.innerHTML = `🔴 非營業時間 (Fermé) — ${hoursText}，暫不接受下單`;
+      banner.innerHTML = `🔴 非營業時間/休息中 (Fermé) — ${hoursText}`;
     }
   }
 
-  // 🌟 自動切換結算按鈕的樣式與可用性
   if (checkoutBtn) {
     if (isOpen) {
       checkoutBtn.disabled = false;
@@ -239,24 +269,11 @@ function playAdminNewOrderSound() {
 function normalizeCategory(rawCat, nameZh = '', nameFr = '') {
   const cat = (rawCat || '').toString().toLowerCase().trim();
   const zh = (nameZh || '').toString().toLowerCase();
-  const fr = (nameFr || '').toString().toLowerCase();
-
-  if (cat.includes('特色') || cat.includes('每日') || cat.includes('spécialité') || cat.includes('specialite') || cat.includes('special')) {
-    return 'Specialite';
-  }
-  if (cat.includes('海鮮') || cat.includes('海鲜') || cat.includes('魚') || cat.includes('鱼') || cat.includes('蝦') || cat.includes('虾') || 
-      cat.includes('poisson') || cat.includes('crevette') || cat.includes('mer') || zh.includes('魚') || zh.includes('鱼') || zh.includes('蝦')) {
-    return 'Seafood';
-  }
-  if (cat.includes('牛肉') || cat.includes('牛') || cat.includes('bœuf') || cat.includes('boeuf') || cat.includes('beef') || zh.includes('牛')) {
-    return 'Beef';
-  }
-  if (cat.includes('素') || cat.includes('légume') || cat.includes('legume')) {
-    return 'Legumes';
-  }
-  if (cat.includes('主食') || cat.includes('riz') || cat.includes('nouille') || cat.includes('rice') || cat.includes('noodle')) {
-    return 'Staple';
-  }
+  if (cat.includes('特色') || cat.includes('spécialité') || cat.includes('specialite')) return 'Specialite';
+  if (cat.includes('海鮮') || cat.includes('魚') || cat.includes('poisson') || zh.includes('魚')) return 'Seafood';
+  if (cat.includes('牛肉') || cat.includes('bœuf') || cat.includes('beef') || zh.includes('牛')) return 'Beef';
+  if (cat.includes('素') || cat.includes('légume')) return 'Legumes';
+  if (cat.includes('主食') || cat.includes('riz') || cat.includes('nouille')) return 'Staple';
   return 'Viandes';
 }
 
@@ -300,9 +317,7 @@ function renderMenu() {
   const container = document.getElementById('menu-container');
   if (!container) return;
 
-  let listToDisplay = menuData.filter(i => {
-    return normalizeCategory(i.category, i.name_zh, i.name_fr) === currentCategory;
-  });
+  let listToDisplay = menuData.filter(i => normalizeCategory(i.category, i.name_zh, i.name_fr) === currentCategory);
 
   listToDisplay.sort((a, b) => {
     const stockA = (a && typeof a.stock === 'number') ? a.stock : 99;
@@ -409,6 +424,9 @@ function openCheckoutModal() {
     return;
   }
   if (Object.keys(cart).length === 0) return alert('Votre panier est vide ! / 購物車是空的！');
+  
+  // 🌟 開啟時自動根據時間鎖定配送日期選項
+  updateCheckoutDateOptions();
   document.getElementById('checkout-modal').classList.remove('hidden');
 }
 
@@ -477,7 +495,6 @@ async function submitOrder() {
     });
     
     const total = parseFloat(document.getElementById('total-price').innerText);
-    // 訂單編號（巴黎日期 + 4 位隨機碼，例如 CC-261013-A3K9），同時寫入資料庫 order_code 欄位
     const orderId = generateOrderCode();
     const deliveryDateISO = resolveDeliveryDate(dateSelect);
     const deliverySlot = `${dateSelect} - ${timeSelect}`;
@@ -489,9 +506,8 @@ async function submitOrder() {
       { customer_name: name, phone: fullContactInfo, items: dbItems, total_price: total, status: 'pending', order_code: orderId, delivery_date: deliveryDateISO }
     ]).select();
 
-    // 若資料庫還沒新增 order_code / delivery_date 欄位，退回舊格式寫入，避免整個下單流程失敗
     if (error && /order_code|delivery_date/.test(error.message || '')) {
-      console.warn('orders 表缺少 order_code / delivery_date 欄位，已改用舊格式寫入，請在 Supabase 執行 SQL 新增欄位。');
+      console.warn('orders 表缺少 order_code / delivery_date 欄位，改用舊格式寫入。');
       ({ data, error } = await supabaseClient.from('orders').insert([
         { customer_name: name, phone: fullContactInfo, items: dbItems, total_price: total, status: 'pending' }
       ]).select());
@@ -714,24 +730,18 @@ async function toggleMode(forceCheck = false) {
   const adminView = document.getElementById('admin-view');
   const customerView = document.getElementById('customer-view');
 
-  // 如果目前是準備進入後台，且尚未登入
   if ((adminView.classList.contains('hidden') || forceCheck) && !isAdminLoggedIn) {
     const password = prompt("🔐 Mot de passe Admin / 請輸入群主管理密碼：");
-    if (!password) return; // 使用者按取消
+    if (!password) return;
 
     try {
-      // 每次都強制從 Supabase 資料庫撈取最新的密碼（不使用快取）
       const { data, error } = await supabaseClient
         .from('store_settings')
         .select('admin_password')
         .eq('id', 1)
         .single();
 
-      if (error) {
-        console.error("讀取密碼錯誤:", error);
-      }
-
-      // 優先使用資料庫中的密碼，若無則預設為 "8888"
+      if (error) console.error("讀取密碼錯誤:", error);
       const correctPassword = (data && data.admin_password) ? data.admin_password : "8888";
 
       if (password !== correctPassword) {
@@ -747,19 +757,14 @@ async function toggleMode(forceCheck = false) {
     isAdminLoggedIn = true;
   }
 
-  // 切換畫面顯示
   adminView.classList.toggle('hidden');
   customerView.classList.toggle('hidden');
 
   if (!adminView.classList.contains('hidden')) {
-    // 進入後台時載入資料
     fetchOrders();
     initAdminRealtimeListener(); 
   } else {
-    // 🌟 當點擊「返回前台」離開後台時，把登入狀態重設為 false
-    // 這樣下次再點「後台」時，就會重新跳出密碼輸入框，並驗證你剛改好的新密碼！
     isAdminLoggedIn = false;
-
     if (orderChannel) {
       supabaseClient.removeChannel(orderChannel);
       orderChannel = null;
@@ -776,7 +781,6 @@ function initAdminRealtimeListener() {
       'postgres_changes',
       { event: 'INSERT', schema: 'public', table: 'orders' },
       (payload) => {
-        console.log('🔔 偵測到新訂單進來：', payload.new);
         playAdminNewOrderSound();
         fetchOrders();
       }
@@ -785,8 +789,6 @@ function initAdminRealtimeListener() {
       'postgres_changes',
       { event: 'UPDATE', schema: 'public', table: 'orders' },
       (payload) => {
-        console.log('🔄 偵測到訂單狀態或 WA 點擊更新：', payload.new);
-        // 當訂單狀態改變或點擊 WhatsApp 時自動重新抓取並刷新後台列表
         fetchOrders();
       }
     )
@@ -809,7 +811,6 @@ function switchAdminTab(tab) {
   const menuBtn = document.getElementById('tab-menu-btn');
   const settingsBtn = document.getElementById('tab-settings-btn');
 
-  // 先將所有分頁隱藏，所有按鈕恢復預設樣式
   ordersTab.classList.add('hidden');
   menuTab.classList.add('hidden');
   settingsTab.classList.add('hidden');
@@ -831,7 +832,6 @@ function switchAdminTab(tab) {
   } else if (tab === 'settings') {
     settingsTab.classList.remove('hidden');
     settingsBtn.className = activeClass;
-    // 如果未來設定頁面需要載入資料，可以在這裡呼叫
   }
 }
 
@@ -848,7 +848,6 @@ async function fetchOrders() {
       .order('created_at', { ascending: false });
 
     if (error) {
-      console.error('Fetch Orders Error:', error);
       container.innerHTML = `<div class="text-red-500 text-xs text-center py-4">讀取失敗: ${escapeHtml(error.message)}</div>`;
       return;
     }
@@ -857,7 +856,6 @@ async function fetchOrders() {
     applyOrderFilters();
 
   } catch (err) {
-    console.error('Unexpected Error:', err);
     container.innerHTML = `<div class="text-red-500 text-xs text-center py-4">系統異常: ${escapeHtml(err.message)}</div>`;
   }
 }
@@ -918,7 +916,6 @@ function applyOrderFilters() {
       return orderDateStr === datePickerVal;
     });
   } else if (currentOrderTab === 'today' || currentOrderTab === 'tomorrow') {
-    // 用真正的配送日期（巴黎時間）比對；舊訂單沒有 delivery_date，退回用文字判斷
     const targetDate = getParisDateStr(currentOrderTab === 'today' ? 0 : 1);
     filtered = filtered.filter(o => {
       if (o.delivery_date) return String(o.delivery_date).slice(0, 10) === targetDate;
@@ -1291,7 +1288,7 @@ async function deleteDish(event, id) {
 window.addEventListener('DOMContentLoaded', () => {
   fetchMenu();
   checkUrlAdminParam();
-  loadStoreSettings(); // 👈 載入動態設定
+  loadStoreSettings();
   updateBusinessStatusBar();
   setInterval(updateBusinessStatusBar, 60000);
 });
@@ -1351,10 +1348,6 @@ async function deleteOrderFromSupabase(orderId) {
   
   if (!confirmDelete) return;
 
-  const targetOrder = rawOrders.find(o => o.id == orderId);
-  console.log("👉 點擊刪除的完整訂單資料物件：", targetOrder);
-  console.log("👉 傳入的 orderId 數值與類型:", orderId, typeof orderId);
-
   try {
     const { data, error } = await supabaseClient
       .from('orders')
@@ -1363,23 +1356,18 @@ async function deleteOrderFromSupabase(orderId) {
       .select();
 
     if (error) {
-      console.error('Supabase 刪除報錯:', error);
       alert('❌ 刪除失敗: ' + error.message);
-    } else if (!data || data.length === 0) {
-      alert('⚠️ 刪除失敗：請按 F12 打開 Console 查看印出的訂單資料結構。');
     } else {
       alert('✅ 訂單已成功永久刪除！');
       fetchOrders();
     }
   } catch (err) {
-    console.error('刪除過程發生異常:', err);
     alert('❌ 系統異常: ' + err.message);
   }
 }
 
 function generateWhatsAppLink(orderData, orderId) {
   const phone = String(STORE_CONFIG.whatsappNumber || '').replace(/[^0-9]/g, '');
-  
   const itemsText = orderData.items.map(item => `- ${item.name} x${item.quantity} (€${(item.price * item.quantity).toFixed(2)})`).join('\n');
   
   const message = `Bonjour ${STORE_CONFIG.storeName} ! 👋
@@ -1451,13 +1439,12 @@ async function markWhatsappClicked(orderId) {
   }
 }
 
-// 1. 從 Supabase 載入 WhatsApp 設定
-// 1. 從 Supabase 載入設定
+// 載入店鋪設定
 async function loadStoreSettings() {
   try {
     const { data, error } = await supabaseClient
       .from('store_settings')
-      .select('whatsapp_number, store_name, store_slogan, store_hours_text, business_mode, manual_open') // 👈 必須包含這三個新欄位
+      .select('whatsapp_number, store_name, store_slogan, store_hours_text, business_mode, manual_open, allowed_days')
       .eq('id', 1)
       .single();
 
@@ -1484,7 +1471,6 @@ async function loadStoreSettings() {
         if (sloganEl) sloganEl.innerText = STORE_CONFIG.storeSlogan;
       }
 
-      // 🌟 檢查這裡有沒有這段營業時間的讀取邏輯：
       if (data.store_hours_text) {
         STORE_CONFIG.storeHoursText = data.store_hours_text;
         const hoursInput = document.getElementById('setting-hours-text-input');
@@ -1505,6 +1491,14 @@ async function loadStoreSettings() {
         if (manualSelect) manualSelect.value = STORE_CONFIG.manualOpen ? "true" : "false";
       }
 
+      // 載入每週允許的配送日
+      if (Array.isArray(data.allowed_days)) {
+        STORE_CONFIG.allowedDays = data.allowed_days;
+        document.querySelectorAll('.day-checkbox').forEach(chk => {
+          chk.checked = STORE_CONFIG.allowedDays.includes(parseInt(chk.value, 10));
+        });
+      }
+
       toggleManualOpenOption();
       updateBusinessStatusBar();
     }
@@ -1513,7 +1507,6 @@ async function loadStoreSettings() {
   }
 }
 
-// 2. 儲存 WhatsApp 設定至 Supabase
 async function saveWhatsAppNumber() {
   const inputEl = document.getElementById('setting-whatsapp-input');
   const statusEl = document.getElementById('whatsapp-save-status');
@@ -1571,11 +1564,9 @@ async function saveStoreInfo() {
 
     if (error) throw error;
 
-    // 更新記憶體中的設定
     STORE_CONFIG.storeName = newName;
     STORE_CONFIG.storeSlogan = newSlogan;
 
-    // 即時更新前台顯示
     const titleEl = document.getElementById('store-title-text');
     if (titleEl) titleEl.innerText = newName;
 
@@ -1608,25 +1599,32 @@ function toggleManualOpenOption() {
   }
 }
 
+// 🌟 整合版：一次儲存營業時間、營業模式與每週送餐日
 async function saveBusinessHoursInfo() {
   const hoursInput = document.getElementById('setting-hours-text-input');
   const modeSelect = document.getElementById('setting-business-mode-select');
   const manualSelect = document.getElementById('setting-manual-open-select');
   const statusEl = document.getElementById('business-hours-save-status');
 
+  // 1. 抓取勾選的星期
+  const checkboxes = document.querySelectorAll('.day-checkbox:checked');
+  const selectedDays = Array.from(checkboxes).map(chk => parseInt(chk.value, 10));
+
   if (!hoursInput || !modeSelect || !manualSelect) return;
 
-  const newHoursText = hoursInput.value.trim() || "🕒 12:00 - 14:00 (Lundi - Samedi)";
+  const newHoursText = hoursInput.value.trim() || "🕒 13:00 - 10:00 (Lundi - Dimanche)";
   const newMode = modeSelect.value;
   const newManualOpen = manualSelect.value === 'true';
 
   try {
+    // 2. 一併寫入 Supabase
     const { error } = await supabaseClient
       .from('store_settings')
       .update({ 
         store_hours_text: newHoursText, 
         business_mode: newMode, 
         manual_open: newManualOpen,
+        allowed_days: selectedDays,
         updated_at: new Date() 
       })
       .eq('id', 1);
@@ -1636,6 +1634,7 @@ async function saveBusinessHoursInfo() {
     STORE_CONFIG.storeHoursText = newHoursText;
     STORE_CONFIG.businessMode = newMode;
     STORE_CONFIG.manualOpen = newManualOpen;
+    STORE_CONFIG.allowedDays = selectedDays;
 
     const hoursEl = document.getElementById('store-hours-text');
     if (hoursEl) hoursEl.innerText = newHoursText;
@@ -1643,7 +1642,7 @@ async function saveBusinessHoursInfo() {
     updateBusinessStatusBar();
 
     if (statusEl) {
-      statusEl.innerText = "✅ 營業設定已成功更新！";
+      statusEl.innerText = "✅ 營業與送餐日設定已成功更新！";
       statusEl.className = "text-xs mt-1 text-green-600 font-bold block text-center";
       setTimeout(() => { statusEl.className = "text-xs mt-1 hidden text-center"; }, 3000);
     }
@@ -1673,7 +1672,6 @@ async function saveAdminPassword() {
   }
 
   try {
-    // 1. 先從 Supabase 讀取目前的密碼設定（假設資料表 store_settings 的 id = 1）
     const { data, error: fetchError } = await supabaseClient
       .from('store_settings')
       .select('admin_password')
@@ -1682,16 +1680,13 @@ async function saveAdminPassword() {
 
     if (fetchError) throw fetchError;
 
-    // 如果資料庫還沒設定過 admin_password，預設舊密碼為 "8888"
     const currentDbPassword = (data && data.admin_password) ? data.admin_password : "8888";
 
-    // 2. 驗證舊密碼是否正確
     if (oldPass !== currentDbPassword) {
       alert("❌ 舊密碼輸入錯誤！");
       return;
     }
 
-    // 3. 更新至 Supabase
     const { error: updateError } = await supabaseClient
       .from('store_settings')
       .update({ 
@@ -1702,7 +1697,6 @@ async function saveAdminPassword() {
 
     if (updateError) throw updateError;
 
-    // 清空輸入框
     oldPassInput.value = '';
     newPassInput.value = '';
 
