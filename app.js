@@ -480,6 +480,24 @@ function saveOrderToLocal(order) {
   }
 }
 
+// 🔒 place_order 失敗時的提示（錯誤代碼由資料庫函式回傳）
+function handlePlaceOrderError(msg) {
+  console.error('place_order error:', msg);
+  let text;
+  if (msg.includes('OUT_OF_STOCK:')) {
+    const dish = msg.split('OUT_OF_STOCK:')[1].split('\n')[0].trim();
+    text = `❌ Désolé, « ${dish} » n'est plus disponible en quantité suffisante.\n抱歉，「${dish}」庫存不足或已下架，請調整購物車後再試。`;
+  } else if (msg.includes('DISH_NOT_FOUND')) {
+    text = "❌ Un plat n'existe plus, veuillez rafraîchir la page.\n有菜品已被移除，請重新整理頁面後再下單。";
+  } else if (/INVALID_/.test(msg)) {
+    text = '❌ Données invalides, veuillez vérifier votre commande.\n訂單資料有誤，請檢查姓名、電話、地址與購物車後再試。';
+  } else {
+    text = 'Échec / 下單失敗: ' + msg;
+  }
+  alert(text);
+  fetchMenu(); // 重新讀取最新庫存
+}
+
 async function submitOrder() {
   if (!checkIsBusinessOpen()) {
     alert(`❌ Désolé, nous sommes actuellement fermés !\n抱歉，目前為非營業時間（${STORE_CONFIG.storeHoursText}），暫不接受下單！`);
@@ -544,86 +562,57 @@ async function submitOrder() {
       console.warn("即時同步後台設定失敗，使用現有設定", e);
     }
 
-    let calculatedTotal = 0;
-    const verifiedItems = [];
-    const itemsForWhatsApp = [];
-
-    for (let id in cart) {
-      const qty = cart[id];
-      const { data: menuItem, error: menuErr } = await supabaseClient
-        .from('menu_items')
-        .select('name_fr, name_zh, price')
-        .eq('id', id)
-        .single();
-
-      if (menuErr || !menuItem) {
-        throw new Error(`找不到菜品或價格驗證失敗 (ID: ${id})`);
-      }
-
-      const realPrice = parseFloat(menuItem.price) || 0;
-      calculatedTotal += realPrice * qty;
-
-      verifiedItems.push({
-        name: `${menuItem.name_fr} (${menuItem.name_zh})`,
-        qty: qty,
-        price: realPrice
-      });
-
-      itemsForWhatsApp.push({
-        name_fr: menuItem.name_fr,
-        name_zh: menuItem.name_zh,
-        qty: qty,
-        price: realPrice
-      });
-    }
-
-    const orderId = generateOrderCode();
-    const deliveryDateISO = resolveDeliveryDate(dateSelect);
+    // 🔒 價格、庫存、訂單寫入全部交給資料庫函式 place_order：
+    //    顧客端只送「菜品 id + 數量」，價格與庫存由資料庫判斷，前端無法竄改。
+    const cartPayload = Object.keys(cart).map(id => ({ id: String(id), qty: cart[id] }));
     const deliverySlot = `${dateSelect} - ${timeSelect}`;
+    const deliveryDateISO = resolveDeliveryDate(dateSelect);
 
     const fulfillmentText = fulfillmentMode === 'pickup' ? '[到店自取 Click & Collect]' : `[配送 Livraison] Adresse: ${fullDeliveryAddress}`;
     const fullContactInfo = `[${deliverySlot}] ${phone} | ${fulfillmentText}${note ? ' | Note: ' + note : ''}`;
 
-    let { data, error } = await supabaseClient.from('orders').insert([
-      { customer_name: name, phone: fullContactInfo, items: verifiedItems, total_price: calculatedTotal, status: 'pending', order_code: orderId, delivery_date: deliveryDateISO }
-    ]).select();
+    let orderId = generateOrderCode();
+    let rpcResult = null;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const { data: rpcData, error: rpcError } = await supabaseClient.rpc('place_order', {
+        p_customer_name: name,
+        p_contact: fullContactInfo,
+        p_items: cartPayload,
+        p_order_code: orderId,
+        p_delivery_date: deliveryDateISO
+      });
 
-    if (error && /order_code|delivery_date/.test(error.message || '')) {
-      ({ data, error } = await supabaseClient.from('orders').insert([
-        { customer_name: name, phone: fullContactInfo, items: verifiedItems, total_price: calculatedTotal, status: 'pending' }
-      ]).select());
-    }
+      if (!rpcError) { rpcResult = rpcData; break; }
 
-    if (error) {
-      console.error('Supabase Error:', error);
-      alert('Échec / 數據庫寫入錯誤: ' + error.message);
+      const msg = rpcError.message || '';
+      // 訂單編號剛好撞號：換一個新編號再試
+      if (/duplicate key|orders_order_code_key/i.test(msg) && attempt < 2) {
+        orderId = generateOrderCode();
+        continue;
+      }
+      handlePlaceOrderError(msg);
       return;
     }
+    if (!rpcResult) return;
 
-    const realDbId = data[0].id;
-
-    for (let id in cart) {
-      const qty = cart[id];
-      const targetDish = menuData.find(m => m.id === id);
-      if (targetDish) {
-        const currentStock = (typeof targetDish.stock === 'number') ? targetDish.stock : 99;
-        const newStock = Math.max(0, currentStock - qty);
-        const newAvailable = newStock > 0 ? (targetDish.is_available !== false) : false;
-
-        await supabaseClient
-          .from('menu_items')
-          .update({ stock: newStock, is_available: newAvailable })
-          .eq('id', id);
-
-        targetDish.stock = newStock;
-        targetDish.is_available = newAvailable;
-      }
-    }
+    const realDbId = rpcResult.id;
+    const calculatedTotal = Number(rpcResult.total) || 0;
+    const itemsForWhatsApp = (rpcResult.items || []).map(i => ({
+      name_fr: i.name_fr,
+      name_zh: i.name_zh,
+      qty: i.qty,
+      price: Number(i.price) || 0
+    }));
 
     lastOrderDetails = { dbId: realDbId, orderId, deliverySlot, name, phone, address: fullDeliveryAddress, note, items: itemsForWhatsApp, total: calculatedTotal };
     saveOrderToLocal(lastOrderDetails);
 
     cart = {};
+    document.getElementById('total-price').innerText = '0.00';
+    document.getElementById('modal-total-price').innerText = '0.00';
+    const cartBadgeEl = document.getElementById('cart-badge');
+    if (cartBadgeEl) cartBadgeEl.classList.add('hidden');
+    fetchMenu(); // 重新讀取最新庫存（庫存已由資料庫扣除）並刷新菜單
     closeCheckoutModal();
     playOrderSuccessSound();
 
@@ -1519,10 +1508,7 @@ async function markWhatsappClicked(orderId) {
 
   if (!orderId) return;
   try {
-    await supabaseClient
-      .from('orders')
-      .update({ whatsapp_sent: true })
-      .eq('id', orderId);
+    await supabaseClient.rpc('mark_whatsapp_sent', { p_id: String(orderId) });
   } catch (e) {
     console.error('更新 WhatsApp 點擊狀態失敗:', e);
   }
