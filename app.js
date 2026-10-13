@@ -46,6 +46,31 @@ function escapeHtml(str) {
     .replace(/'/g, '&#039;');
 }
 
+// 🗓️ 取得巴黎時區的日期字串（YYYY-MM-DD）；offsetDays=0 今天、1 明天
+function getParisDateStr(offsetDays = 0) {
+  const todayStr = new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Paris' });
+  if (!offsetDays) return todayStr;
+  const [y, m, d] = todayStr.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d + offsetDays)).toISOString().slice(0, 10);
+}
+
+// 依顧客選的配送日（Aujourd'hui / Demain）換算成真正的日期
+function resolveDeliveryDate(dateSelect) {
+  const isTomorrow = /demain|明天/i.test(dateSelect || '');
+  return getParisDateStr(isTomorrow ? 1 : 0);
+}
+
+// 🧾 產生訂單編號：CC-YYMMDD-XXXX（巴黎日期 + 4 位隨機碼，避開 0/O/1/I 等易混淆字元）
+function generateOrderCode() {
+  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // 32 個字元
+  const bytes = new Uint8Array(4);
+  crypto.getRandomValues(bytes);
+  let rand = '';
+  bytes.forEach(b => { rand += alphabet[b % alphabet.length]; });
+  const yymmdd = getParisDateStr().slice(2).replace(/-/g, '');
+  return `CC-${yymmdd}-${rand}`;
+}
+
 // ⏰ 檢查是否在營業時間內（週一至週六 09:00 - 20:00 法國巴黎時間）
 // ⏰ 檢查是否在營業時間內（自動解析你設定的時間範圍）
 function checkIsBusinessOpen() {
@@ -305,7 +330,7 @@ function renderMenu() {
     const isMaxReached = currentCartQty >= maxStock;
 
     const imgHtml = item.image_url 
-      ? `<img src="${item.image_url}" class="w-16 h-16 rounded-lg object-cover flex-shrink-0" alt="${item.name_zh}">`
+      ? `<img src="${escapeHtml(item.image_url)}" class="w-16 h-16 rounded-lg object-cover flex-shrink-0" alt="${escapeHtml(item.name_zh)}">`
       : `<div class="w-16 h-16 rounded-lg bg-orange-50 border border-orange-100 flex items-center justify-center text-orange-400 font-bold text-xs flex-shrink-0">🍲</div>`;
 
     return `
@@ -316,10 +341,10 @@ function renderMenu() {
         
         <div class="flex-1 min-w-0">
           <div onclick="openDishDetailModal('${item.id}')" class="font-bold text-gray-800 text-xs sm:text-sm leading-tight line-clamp-2 break-words cursor-pointer hover:text-green-600 transition">
-            ${item.name_fr || ''}
+            ${escapeHtml(item.name_fr)}
             ${!isAvailable ? '<span class="ml-1 text-[10px] bg-gray-200 text-gray-600 px-1 py-0.5 rounded font-normal inline-block">Épuisé</span>' : ''}
           </div>
-          <div class="text-xs text-gray-500 font-normal mt-0.5 truncate">${item.name_zh || ''}</div>
+          <div class="text-xs text-gray-500 font-normal mt-0.5 truncate">${escapeHtml(item.name_zh)}</div>
           <div class="flex items-center gap-2 mt-1">
             <span class="text-green-600 font-extrabold text-base">${item.price || 0} €</span>
             ${isAvailable ? `<span class="text-[10px] text-orange-600 bg-orange-50 px-1.5 py-0.5 rounded border border-orange-100">Stock: ${maxStock}</span>` : ''}
@@ -380,7 +405,7 @@ function updateCart(id, delta) {
 
 function openCheckoutModal() {
   if (!checkIsBusinessOpen()) {
-    alert("❌ Désolé, nous sommes actuellement fermés !\n抱歉，目前為非營業時間（營業時間：週一至週六 09:00 - 20:00），暫不接受下單！");
+    alert(`❌ Désolé, nous sommes actuellement fermés !\n抱歉，目前為非營業時間（${STORE_CONFIG.storeHoursText}），暫不接受下單！`);
     return;
   }
   if (Object.keys(cart).length === 0) return alert('Votre panier est vide ! / 購物車是空的！');
@@ -407,7 +432,7 @@ function saveOrderToLocal(order) {
 
 async function submitOrder() {
   if (!checkIsBusinessOpen()) {
-    alert("❌ Désolé, nous sommes actuellement fermés !\n抱歉，目前為非營業時間（營業時間：週一至週六 09:00 - 20:00），暫不接受下單！");
+    alert(`❌ Désolé, nous sommes actuellement fermés !\n抱歉，目前為非營業時間（${STORE_CONFIG.storeHoursText}），暫不接受下單！`);
     closeCheckoutModal();
     return;
   }
@@ -452,18 +477,25 @@ async function submitOrder() {
     });
     
     const total = parseFloat(document.getElementById('total-price').innerText);
-    // 產生不重複的訂單編號（例如：CC-261013-A3K9）
-    const dateStr = new Date().toISOString().slice(2, 10).replace(/-/g, ''); // 取得 YYMMDD
-    const randomStr = Math.random().toString(36).substring(2, 6).toUpperCase(); // 4位隨機碼
-    const orderId = `CC-${dateStr}-${randomStr}`;
+    // 訂單編號（巴黎日期 + 4 位隨機碼，例如 CC-261013-A3K9），同時寫入資料庫 order_code 欄位
+    const orderId = generateOrderCode();
+    const deliveryDateISO = resolveDeliveryDate(dateSelect);
     const deliverySlot = `${dateSelect} - ${timeSelect}`;
 
     const fullContactInfo = `[${deliverySlot}] ${phone} | Adresse: ${address}${note ? ' | Note: ' + note : ''}`;
     const dbItems = items.map(i => ({ name: `${i.name_fr} (${i.name_zh})`, qty: i.qty, price: i.price }));
 
-    const { data, error } = await supabaseClient.from('orders').insert([
-      { customer_name: name, phone: fullContactInfo, items: dbItems, total_price: total, status: 'pending' }
+    let { data, error } = await supabaseClient.from('orders').insert([
+      { customer_name: name, phone: fullContactInfo, items: dbItems, total_price: total, status: 'pending', order_code: orderId, delivery_date: deliveryDateISO }
     ]).select();
+
+    // 若資料庫還沒新增 order_code / delivery_date 欄位，退回舊格式寫入，避免整個下單流程失敗
+    if (error && /order_code|delivery_date/.test(error.message || '')) {
+      console.warn('orders 表缺少 order_code / delivery_date 欄位，已改用舊格式寫入，請在 Supabase 執行 SQL 新增欄位。');
+      ({ data, error } = await supabaseClient.from('orders').insert([
+        { customer_name: name, phone: fullContactInfo, items: dbItems, total_price: total, status: 'pending' }
+      ]).select());
+    }
 
     if (error) {
       console.error('Supabase Error:', error);
@@ -507,7 +539,7 @@ async function submitOrder() {
     };
     
     const whatsappUrl = generateWhatsAppLink(whatsappOrderData, orderId);
-    showWhatsAppModal(whatsappUrl, realDbId);
+    showWhatsAppModal(whatsappUrl, realDbId, orderId);
 
   } catch (err) {
     console.error('Submission Error:', err);
@@ -516,7 +548,7 @@ async function submitOrder() {
     if (submitBtn) {
       submitBtn.disabled = false;
       submitBtn.classList.remove('opacity-50', 'cursor-not-allowed');
-      submitBtn.innerText = 'Valider / 結算';
+      submitBtn.innerText = 'Confirmer / 提交訂單';
     }
   }
 }
@@ -532,7 +564,7 @@ function showReceiptModal(order) {
   const itemsContainer = document.getElementById('receipt-items');
   itemsContainer.innerHTML = order.items.map(i => `
     <li class="flex justify-between">
-      <span>${i.name_fr} (${i.name_zh}) x${i.qty}</span>
+      <span>${escapeHtml(i.name_fr)} (${escapeHtml(i.name_zh)}) x${escapeHtml(i.qty)}</span>
       <span class="font-bold">${(i.price * i.qty).toFixed(2)} €</span>
     </li>
   `).join('');
@@ -589,7 +621,7 @@ function copyReceiptText() {
   if (!lastOrderDetails) return;
   const o = lastOrderDetails;
   const itemText = o.items.map(i => `- ${i.name_fr} (${i.name_zh}) x${i.qty}`).join('\n');
-  const text = `🧾 【Cici Cuisine 訂單憑證 #${o.orderId}】\n📅 配送時間: ${o.deliverySlot}\n👤 姓名: ${o.name}\n📞 電話: ${escapeHtml(o.phone)}\n📍 地址: ${o.address}\n\n🍲 訂購餐點:\n${itemText}\n\n💰 總計: ${o.total.toFixed(2)} €`;
+  const text = `🧾 【Cici Cuisine 訂單憑證 #${o.orderId}】\n📅 配送時間: ${o.deliverySlot}\n👤 姓名: ${o.name}\n📞 電話: ${o.phone}\n📍 地址: ${o.address}\n\n🍲 訂購餐點:\n${itemText}\n\n💰 總計: ${o.total.toFixed(2)} €`;
 
   navigator.clipboard.writeText(text).then(() => {
     alert('📋 訂單明細已複製到剪貼板！可以直接發給群主微信。');
@@ -634,15 +666,15 @@ function openHistoryModal() {
       return `
         <div class="bg-gray-50 p-3.5 rounded-xl border border-gray-200 text-xs space-y-2 shadow-sm">
           <div class="flex justify-between items-center font-bold text-gray-800 border-b pb-1">
-            <span class="text-green-600">#${o.orderId}</span>
+            <span class="text-green-600">#${escapeHtml(o.orderId)}</span>
             <span class="text-gray-400 text-[10px] font-normal">${o.createdAt || ''}</span>
           </div>
-          <div class="text-gray-600">📅 <strong>配送:</strong> ${o.deliverySlot}</div>
-          <div class="text-gray-600 truncate">🍲 <strong>明細:</strong> ${itemsText}</div>
+          <div class="text-gray-600">📅 <strong>配送:</strong> ${escapeHtml(o.deliverySlot)}</div>
+          <div class="text-gray-600 truncate">🍲 <strong>明細:</strong> ${escapeHtml(itemsText)}</div>
           <div class="flex justify-between items-center pt-1 font-bold border-t border-gray-100">
             <span class="text-gray-500">總計: <span class="text-green-600 text-sm">${(o.total || 0).toFixed(2)} €</span></span>
             
-            <a href="${whatsappUrl}" target="_blank" onclick="markWhatsappClicked('${targetDbId}')"
+            <a href="${escapeHtml(whatsappUrl)}" target="_blank" onclick="markWhatsappClicked('${escapeHtml(targetDbId)}')"
                class="bg-green-500 hover:bg-green-600 text-white px-3 py-1.5 rounded-lg font-bold flex items-center space-x-1 shadow-sm transition text-[11px]">
               <span>📱 傳送 WhatsApp</span>
             </a>
@@ -817,7 +849,7 @@ async function fetchOrders() {
 
     if (error) {
       console.error('Fetch Orders Error:', error);
-      container.innerHTML = `<div class="text-red-500 text-xs text-center py-4">讀取失敗: ${error.message}</div>`;
+      container.innerHTML = `<div class="text-red-500 text-xs text-center py-4">讀取失敗: ${escapeHtml(error.message)}</div>`;
       return;
     }
 
@@ -826,7 +858,7 @@ async function fetchOrders() {
 
   } catch (err) {
     console.error('Unexpected Error:', err);
-    container.innerHTML = `<div class="text-red-500 text-xs text-center py-4">系統異常: ${err.message}</div>`;
+    container.innerHTML = `<div class="text-red-500 text-xs text-center py-4">系統異常: ${escapeHtml(err.message)}</div>`;
   }
 }
 
@@ -882,18 +914,18 @@ function applyOrderFilters() {
   if (datePickerVal) {
     filtered = filtered.filter(o => {
       if (!o.created_at) return false;
-      const orderDateStr = new Date(o.created_at).toISOString().split('T')[0];
+      const orderDateStr = new Date(o.created_at).toLocaleDateString('sv-SE', { timeZone: 'Europe/Paris' });
       return orderDateStr === datePickerVal;
     });
-  } else if (currentOrderTab === 'today') {
+  } else if (currentOrderTab === 'today' || currentOrderTab === 'tomorrow') {
+    // 用真正的配送日期（巴黎時間）比對；舊訂單沒有 delivery_date，退回用文字判斷
+    const targetDate = getParisDateStr(currentOrderTab === 'today' ? 0 : 1);
     filtered = filtered.filter(o => {
+      if (o.delivery_date) return String(o.delivery_date).slice(0, 10) === targetDate;
       const phoneStr = (o.phone || '').toLowerCase();
-      return phoneStr.includes('aujourd') || phoneStr.includes('當天') || phoneStr.includes('当天');
-    });
-  } else if (currentOrderTab === 'tomorrow') {
-    filtered = filtered.filter(o => {
-      const phoneStr = (o.phone || '').toLowerCase();
-      return phoneStr.includes('demain') || phoneStr.includes('明天');
+      return currentOrderTab === 'today'
+        ? (phoneStr.includes('aujourd') || phoneStr.includes('當天') || phoneStr.includes('当天'))
+        : (phoneStr.includes('demain') || phoneStr.includes('明天'));
     });
   }
 
@@ -902,7 +934,8 @@ function applyOrderFilters() {
       const nameMatch = (o.customer_name || '').toLowerCase().includes(searchKeyword);
       const phoneMatch = (o.phone || '').toLowerCase().includes(searchKeyword);
       const itemMatch = Array.isArray(o.items) && o.items.some(i => (i.name || '').toLowerCase().includes(searchKeyword));
-      return nameMatch || phoneMatch || itemMatch;
+      const codeMatch = (o.order_code || '').toLowerCase().includes(searchKeyword);
+      return nameMatch || phoneMatch || itemMatch || codeMatch;
     });
   }
 
@@ -936,7 +969,7 @@ function applyOrderFilters() {
       : '<span class="bg-gray-100 text-gray-400 px-1.5 py-0.5 rounded text-[10px]">⏳ 未點WA</span>';
     
     const itemsList = Array.isArray(o.items) 
-      ? o.items.map(i => `<li class="flex justify-between"><span>${i.name || '菜品'}</span><span class="font-bold">x${i.qty || 1}</span></li>`).join('')
+      ? o.items.map(i => `<li class="flex justify-between"><span>${escapeHtml(i.name || '菜品')}</span><span class="font-bold">x${escapeHtml(i.qty || 1)}</span></li>`).join('')
       : '<li class="text-gray-400">無明細</li>';
 
     return `
@@ -948,7 +981,7 @@ function applyOrderFilters() {
               ${statusBadgeMap[st] || statusBadgeMap['pending']}
               ${whatsappBadge}
             </div>
-            <div class="text-[10px] text-gray-400 font-normal mt-0.5">${createdTimeStr}</div>
+            <div class="text-[10px] text-gray-400 font-normal mt-0.5">${o.order_code ? '#' + escapeHtml(o.order_code) + ' · ' : ''}${createdTimeStr}</div>
           </div>
           <span class="text-green-600 text-base font-black ${isCancelled ? 'line-through text-gray-400' : ''}">${(o.total_price || 0).toFixed(2)} €</span>
         </div>
@@ -974,11 +1007,11 @@ function applyOrderFilters() {
 
           <div class="flex items-center gap-1.5">
             ${isCancelled ? `
-              <button type="button" onclick="deleteOrderFromSupabase('${o.id}', '${escapeHtml(o.customer_name)}')" class="bg-red-100 hover:bg-red-200 text-red-600 text-[10px] px-2 py-1 rounded font-bold transition">
+              <button type="button" onclick="deleteOrderFromSupabase('${o.id}')" class="bg-red-100 hover:bg-red-200 text-red-600 text-[10px] px-2 py-1 rounded font-bold transition">
                 🗑️ 永久刪除
               </button>
             ` : ''}
-            <button type="button" onclick="copyOrderForDriver('${escapeHtml(o.customer_name)}', '${escapeHtml(o.phone)}', '${o.total_price}')" class="bg-gray-100 hover:bg-gray-200 text-gray-700 text-[10px] px-2 py-1 rounded font-bold transition">
+            <button type="button" onclick="copyOrderForDriver('${o.id}')" class="bg-gray-100 hover:bg-gray-200 text-gray-700 text-[10px] px-2 py-1 rounded font-bold transition">
               📋 派送小票
             </button>
           </div>
@@ -988,8 +1021,13 @@ function applyOrderFilters() {
   }).join('');
 }
 
-function copyOrderForDriver(name, contactInfo, total) {
-  const text = `🛵 【外賣派送憑證】\n👤 客戶: ${name}\n📍 聯繫/地址: ${contactInfo}\n💰 應收金額: ${total} €`;
+function copyOrderForDriver(orderId) {
+  const order = rawOrders.find(o => o.id == orderId);
+  if (!order) return alert('找不到訂單資料，請重新整理後再試。');
+  const name = order.customer_name || '';
+  const contactInfo = order.phone || '';
+  const total = order.total_price;
+  const text = `🛵 【外賣派送憑證${order.order_code ? ' #' + order.order_code : ''}】\n👤 客戶: ${name}\n📍 聯繫/地址: ${contactInfo}\n💰 應收金額: ${total} €`;
   navigator.clipboard.writeText(text).then(() => {
     alert('📋 已成功複製派送資訊！可以貼給司機或外賣員。');
   }).catch(() => {
@@ -1051,7 +1089,7 @@ async function fetchAdminMenu() {
     }
 
     const imgThumb = item.image_url 
-      ? `<img src="${item.image_url}" class="w-10 h-10 rounded object-cover mr-2 flex-shrink-0">`
+      ? `<img src="${escapeHtml(item.image_url)}" class="w-10 h-10 rounded object-cover mr-2 flex-shrink-0">`
       : `<div class="w-10 h-10 rounded bg-gray-100 flex items-center justify-center text-xs text-gray-400 mr-2 flex-shrink-0">🍲</div>`;
 
     htmlContent += `
@@ -1061,7 +1099,7 @@ async function fetchAdminMenu() {
           <div class="min-w-0 flex-1">
             <div class="font-bold text-gray-800 text-xs truncate">
               <span class="bg-gray-100 text-gray-600 px-1 py-0.5 rounded mr-1 font-mono">#${item.sort_order || 99}</span>
-              ${item.name_fr || ''} (${item.name_zh || ''})
+              ${escapeHtml(item.name_fr)} (${escapeHtml(item.name_zh)})
             </div>
             <div class="text-green-600 font-extrabold text-xs mt-0.5 flex items-center gap-2">
               <span>${item.price || 0} €</span>
@@ -1076,7 +1114,7 @@ async function fetchAdminMenu() {
           <button type="button" onclick="openDishModal('${item.id}')" class="bg-orange-100 text-orange-600 px-2 py-1 rounded text-[10px] font-bold hover:bg-orange-200">
             Modifier
           </button>
-          <button type="button" onclick="deleteDish(event, '${item.id}', '${item.name_zh}')" class="bg-red-100 text-red-600 px-2 py-1 rounded text-[10px] font-bold hover:bg-red-200">
+          <button type="button" onclick="deleteDish(event, '${item.id}')" class="bg-red-100 text-red-600 px-2 py-1 rounded text-[10px] font-bold hover:bg-red-200">
             Suppr.
           </button>
         </div>
@@ -1128,7 +1166,7 @@ function openDishModal(id = null) {
     
     if (preview) {
       preview.innerHTML = item.image_url 
-        ? `<img src="${item.image_url}" class="w-full h-full object-cover">`
+        ? `<img src="${escapeHtml(item.image_url)}" class="w-full h-full object-cover">`
         : '無圖片';
     }
 
@@ -1230,7 +1268,9 @@ async function saveDish() {
   }
 }
 
-async function deleteDish(event, id, nameZh) {
+async function deleteDish(event, id) {
+  const dishToDelete = menuData.find(m => m.id === id);
+  const nameZh = dishToDelete ? (dishToDelete.name_zh || '') : '';
   if (event) event.stopPropagation();
 
   const confirmDelete = confirm(`⚠️ Êtes-vous sûr de vouloir supprimer "${nameZh}" ?\n確定要永久刪除菜品「${nameZh}」嗎？刪除後無法恢復！`);
@@ -1269,7 +1309,7 @@ function openDishDetailModal(id) {
   const addBtn = document.getElementById('detail-modal-add-btn');
 
   if (item.image_url) {
-    imgContainer.innerHTML = `<img src="${item.image_url}" class="w-full h-full object-cover">`;
+    imgContainer.innerHTML = `<img src="${escapeHtml(item.image_url)}" class="w-full h-full object-cover">`;
   } else {
     imgContainer.innerHTML = `<div class="text-4xl text-orange-400 font-bold">🍲</div>`;
   }
@@ -1305,7 +1345,8 @@ function closeDishDetailModal() {
   if (modal) modal.classList.add('hidden');
 }
 
-async function deleteOrderFromSupabase(orderId, customerName) {
+async function deleteOrderFromSupabase(orderId) {
+  const customerName = (rawOrders.find(o => o.id == orderId) || {}).customer_name || '';
   const confirmDelete = confirm(`⚠️ Supprimer définitivement la commande de "${customerName}" ?\n\n確定要永久刪除來自「${customerName}」的這筆訂單嗎？`);
   
   if (!confirmDelete) return;
@@ -1337,14 +1378,14 @@ async function deleteOrderFromSupabase(orderId, customerName) {
 }
 
 function generateWhatsAppLink(orderData, orderId) {
-  const phone = STORE_CONFIG.whatsappNumber;
+  const phone = String(STORE_CONFIG.whatsappNumber || '').replace(/[^0-9]/g, '');
   
   const itemsText = orderData.items.map(item => `- ${item.name} x${item.quantity} (€${(item.price * item.quantity).toFixed(2)})`).join('\n');
   
   const message = `Bonjour ${STORE_CONFIG.storeName} ! 👋
 J'ai passé une commande sur votre site.
 ----------------------------------
-🧾 訂單號 / Order ID: #${orderId.slice(0, 8)}
+🧾 訂單號 / Order ID: #${orderId}
 👤 姓名 / Nom: ${orderData.customer_name}
 📞 電話 / Tél: ${orderData.customer_phone}
 📍 地址/備註: ${orderData.delivery_address || '到店自取 / Click & Collect'}
@@ -1359,7 +1400,7 @@ Veuillez me confirmer la commande pour lancer la préparation, merci ! 🙏`;
   return `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
 }
 
-function showWhatsAppModal(whatsappUrl, orderId) {
+function showWhatsAppModal(whatsappUrl, dbId, orderCode) {
   const existingModal = document.getElementById('whatsapp-modal');
   if (existingModal) existingModal.remove();
 
@@ -1370,7 +1411,7 @@ function showWhatsAppModal(whatsappUrl, orderId) {
           📱
         </div>
         <h3 class="text-xl font-bold text-gray-800 mb-2">🎉 下單成功！Commande envoyée !</h3>
-        <p class="text-xs text-gray-500 mb-4">訂單編號 / N°: #${orderId.slice(0, 8)}</p>
+        <p class="text-xs text-gray-500 mb-4">訂單編號 / N°: #${escapeHtml(orderCode || String(dbId).slice(0, 8))}</p>
         
         <div class="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-6 text-left text-sm text-amber-800">
           ⚠️ <strong>提醒 / Attention :</strong><br>
@@ -1378,7 +1419,7 @@ function showWhatsAppModal(whatsappUrl, orderId) {
           <span class="text-xs text-amber-600">Veuillez envoyer un message WhatsApp pour valider la commande.</span>
         </div>
 
-        <a href="${whatsappUrl}" target="_blank" onclick="markWhatsappClicked('${orderId}')"
+        <a href="${escapeHtml(whatsappUrl)}" target="_blank" onclick="markWhatsappClicked('${escapeHtml(dbId)}')"
            class="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-4 rounded-xl shadow-lg flex items-center justify-center space-x-2 transition duration-200 mb-3 text-lg">
           <svg class="w-6 h-6 fill-current" viewBox="0 0 24 24">
             <path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981z"/>
