@@ -14,16 +14,12 @@
   <div id="business-status-banner"></div>
 
   <!-- 1. 頂部店鋪招牌 -->
-  <!-- 1. 頂部店鋪招牌 -->
   <header class="bg-gradient-to-r from-red-600 to-orange-500 text-white p-4 shadow-md flex-shrink-0 select-none">
     <div class="flex justify-between items-start">
       <div>
-        <!-- 🌟 這裡加上 id="store-title-text" -->
         <h1 onclick="handleSecretClick()" id="store-title-text" class="text-xl font-bold tracking-wide cursor-pointer active:opacity-80">Cici Cuisine</h1>
         <div class="space-y-0.5 mt-1">
-          <!-- 🌟 這裡加上 id="store-slogan-text" -->
           <p id="store-slogan-text" class="text-xs opacity-90">🕒 Livraison | 配送</p>
-          <!-- 🌟 加上 id="store-hours-text" 方便動態替換 -->
           <p id="store-hours-text" class="text-[11px] opacity-80 font-medium">🕒 12:00 - 14:00 (Lundi - Samedi)</p>
         </div>
       </div>
@@ -40,12 +36,7 @@
 
   <!-- 2. 顧客前台點餐界面 -->
   <div id="customer-view" class="flex-1 flex overflow-hidden">
-    <!-- 左側分類側邊欄 -->
-    <div id="category-bar" class="w-24 bg-gray-200 border-r border-gray-300 overflow-y-auto flex-shrink-0">
-      <!-- 動態渲染分類 -->
-    </div>
-
-    <!-- 右側菜品列表 -->
+    <div id="category-bar" class="w-24 bg-gray-200 border-r border-gray-300 overflow-y-auto flex-shrink-0"></div>
     <div id="menu-container" class="flex-1 p-3 overflow-y-auto space-y-3 pb-24">
       <div class="text-center text-gray-400 py-10">Chargement du menu...</div>
     </div>
@@ -64,7 +55,6 @@
           <div class="text-[10px] text-gray-400">Livraison à domicile</div>
         </div>
       </div>
-      <!-- 🌟 加上 id="checkout-btn" 方便程式碼控制其灰階與點擊狀態 -->
       <button id="checkout-btn" type="button" onclick="openCheckoutModal()" class="bg-green-500 hover:bg-green-600 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow active:scale-95 transition">
         Valider / 結算
       </button>
@@ -72,7 +62,6 @@
   </div>
 
   <!-- 3. 下單彈窗 -->
- <!-- 3. 下單彈窗 -->
   <div id="checkout-modal" class="hidden fixed inset-0 bg-black/60 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
     <div class="bg-white w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl p-5 space-y-4 max-h-[90vh] overflow-y-auto">
       <div class="flex justify-between items-center border-b pb-3">
@@ -119,28 +108,28 @@
           </select>
         </div>
         
-        <!-- 📍 地址與郵遞區號容器（如果是自取會自動整組隱藏） -->
+        <!-- 📍 郵遞區號與詳細地址容器 -->
         <div id="address-container" class="space-y-3 mb-3">
-          <!-- 1. 必選的 4 個指定郵遞區號下拉選單 -->
+          <!-- 1. 郵遞區號必選下拉選單 -->
           <div>
             <label class="block text-xs font-bold text-gray-700 mb-1">
               Code postal / 配送郵遞區號 <span class="text-red-500">*</span>
             </label>
             <select id="cust-postcode" class="w-full border border-gray-300 p-2.5 rounded-lg text-xs bg-white font-bold text-gray-800 focus:outline-none focus:border-green-500">
               <option value="">-- Sélectionner le code postal / 請選擇郵遞區號 --</option>
-              <option value="34000">34000 - Montpellier Centre (市中心)</option>
-              <option value="34070">34070 - Montpellier Sud (南區)</option>
-              <option value="34080">34080 - Montpellier Ouest (西區)</option>
               <option value="34090">34090 - Montpellier Nord (店鋪所在區)</option>
+              <option value="34000">34000 - Montpellier Centre / 市中心</option>
+              <option value="34070">34070 - Montpellier Sud / 南區</option>
+              <option value="34080">34080 - Montpellier Ouest / 西區</option>
             </select>
           </div>
-
-          <!-- 2. 詳細地址輸入框（保留，不強制要求填寫郵編） -->
+        
+          <!-- 2. 詳細地址輸入框 -->
           <div>
             <label class="block text-xs font-bold text-gray-700 mb-1">
               Adresse de livraison / 詳細送餐地址 <span class="text-red-500">*</span>
             </label>
-            <input type="text" id="cust-address" placeholder="ex: 44 Rue du Faubourg Saint-Jaumes" class="w-full border border-gray-300 p-2.5 rounded-lg text-xs focus:outline-none focus:border-green-500">
+            <input type="text" id="cust-address" placeholder="ex: 10 Rue de la République" class="w-full border border-gray-300 p-2.5 rounded-lg text-xs focus:outline-none focus:border-green-500">
           </div>
         </div>
 
@@ -207,23 +196,21 @@
     </div>
   </div>
 
-  <!-- 5. 歷史訂單彈窗 Modal -->
+  <!-- 5. 歷史訂單彈窗 -->
   <div id="history-modal" class="hidden fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
     <div class="bg-white w-full max-w-md rounded-2xl p-5 space-y-4 shadow-2xl max-h-[85vh] flex flex-col">
       <div class="flex justify-between items-center border-b pb-3 flex-shrink-0">
         <h3 class="font-bold text-base text-gray-800">Mes Commandes / 我的歷史訂單</h3>
         <button type="button" onclick="closeHistoryModal()" class="text-gray-400 text-xl font-bold">✕</button>
       </div>
-      
       <div id="history-list" class="flex-1 overflow-y-auto space-y-3 pr-1"></div>
-
       <button type="button" onclick="closeHistoryModal()" class="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold py-2.5 rounded-xl text-xs transition flex-shrink-0">
         Fermer / 關閉
       </button>
     </div>
   </div>
 
-  <!-- 6. 群主後台視圖 (Admin View) -->
+  <!-- 6. 群主後台視圖 -->
   <div id="admin-view" class="hidden p-4 space-y-4 max-w-xl mx-auto pb-20 overflow-y-auto h-full">
     <div class="flex justify-between items-center bg-white p-3 rounded-xl shadow-sm border">
       <h2 class="font-bold text-gray-800 text-base">🚨 Commandes & Menu / 群主後台</h2>
@@ -233,15 +220,9 @@
     </div>
 
     <div class="flex bg-gray-200 p-1 rounded-xl text-xs font-bold">
-      <button id="tab-orders-btn" type="button" onclick="switchAdminTab('orders')" class="flex-1 py-2 rounded-lg bg-white shadow text-gray-800 transition">
-        📦 訂單管理
-      </button>
-      <button id="tab-menu-btn" type="button" onclick="switchAdminTab('menu')" class="flex-1 py-2 rounded-lg text-gray-500 transition">
-        🍲 菜品管理
-      </button>
-      <button id="tab-settings-btn" type="button" onclick="switchAdminTab('settings')" class="flex-1 py-2 rounded-lg text-gray-500 transition">
-        ⚙️ 系統設定
-      </button>
+      <button id="tab-orders-btn" type="button" onclick="switchAdminTab('orders')" class="flex-1 py-2 rounded-lg bg-white shadow text-gray-800 transition">📦 訂單管理</button>
+      <button id="tab-menu-btn" type="button" onclick="switchAdminTab('menu')" class="flex-1 py-2 rounded-lg text-gray-500 transition">🍲 菜品管理</button>
+      <button id="tab-settings-btn" type="button" onclick="switchAdminTab('settings')" class="flex-1 py-2 rounded-lg text-gray-500 transition">⚙️ 系統設定</button>
     </div>
 
     <div id="admin-orders-tab" class="space-y-3">
@@ -255,21 +236,11 @@
           <div class="text-lg font-black mt-0.5"><span id="stat-order-count">0</span> 筆</div>
         </div>
       </div>
-
       <div class="flex bg-gray-100 p-1 rounded-xl text-[11px] font-bold border border-gray-200">
-        <button type="button" id="order-filter-all" onclick="filterOrderTab('all')" class="flex-1 py-1.5 rounded-lg bg-white text-green-700 shadow-sm transition">
-          全部 (Toutes)
-        </button>
-        <button type="button" id="order-filter-today" onclick="filterOrderTab('today')" class="flex-1 py-1.5 rounded-lg text-gray-500 transition">
-          今天 (Aujourd'hui)
-        </button>
-        <button type="button" id="order-filter-tomorrow" onclick="filterOrderTab('tomorrow')" class="flex-1 py-1.5 rounded-lg text-gray-500 transition">
-          明天 (Demain)
-        </button>
+        <button type="button" id="order-filter-all" onclick="filterOrderTab('all')" class="flex-1 py-1.5 rounded-lg bg-white text-green-700 shadow-sm transition">全部 (Toutes)</button>
+        <button type="button" id="order-filter-today" onclick="filterOrderTab('today')" class="flex-1 py-1.5 rounded-lg text-gray-500 transition">今天 (Aujourd'hui)</button>
+        <button type="button" id="order-filter-tomorrow" onclick="filterOrderTab('tomorrow')" class="flex-1 py-1.5 rounded-lg text-gray-500 transition">明天 (Demain)</button>
       </div>
-
-      
-
       <div class="flex gap-2">
         <select id="order-status-filter" onchange="applyOrderFilters()" class="border p-2 rounded-xl text-xs bg-white font-bold text-gray-700">
           <option value="all">所有狀態 / Tous les statuts</option>
@@ -281,226 +252,95 @@
         <input type="text" id="order-search-input" oninput="applyOrderFilters()" placeholder="🔍 搜尋姓名、電話、地址..." class="flex-1 border p-2 rounded-xl text-xs focus:outline-none focus:border-orange-500 bg-white">
         <input type="date" id="order-date-picker" onchange="applyOrderFilters()" class="border p-2 rounded-xl text-xs bg-white text-gray-600">
       </div>
-
       <div id="order-list" class="space-y-3">
         <div class="text-gray-400 text-xs text-center py-4">Chargement / 加載中...</div>
       </div>
     </div>
 
     <div id="admin-menu-tab" class="hidden space-y-3">
-      <button type="button" onclick="openDishModal()" class="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-2.5 rounded-xl text-xs shadow transition">
-        ➕ Add New Dish / 新增菜品
-      </button>
+      <button type="button" onclick="openDishModal()" class="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-2.5 rounded-xl text-xs shadow transition">➕ Add New Dish / 新增菜品</button>
       <div id="admin-menu-list" class="space-y-2"></div>
     </div>
 
-    <!-- 🌟 3. 新增：系統設定分頁 (預設隱藏 hidden) -->
     <div id="admin-settings-tab" class="hidden space-y-3">
       <div class="bg-white p-4 rounded-xl shadow-sm border space-y-3">
         <h3 class="font-bold text-gray-800 text-sm border-b pb-2">⚙️ 系統設定 / Paramètres</h3>
         <div>
-          <label class="block text-xs font-bold text-gray-600 mb-1">📱 WhatsApp 接收電話 (Numéro WhatsApp)</label>
+          <label class="block text-xs font-bold text-gray-600 mb-1">📱 WhatsApp 接收電話</label>
           <div class="flex gap-2">
             <input type="text" id="setting-whatsapp-input" placeholder="33600000000" class="flex-1 border p-2 rounded-lg text-xs bg-white text-gray-700">
-            <button type="button" onclick="saveWhatsAppNumber()" class="bg-green-500 hover:bg-green-600 text-white text-xs font-bold px-4 py-2 rounded-lg transition">
-              儲存
-            </button>
+            <button type="button" onclick="saveWhatsAppNumber()" class="bg-green-500 hover:bg-green-600 text-white text-xs font-bold px-4 py-2 rounded-lg transition">儲存</button>
           </div>
           <p id="whatsapp-save-status" class="text-xs mt-1 hidden"></p>
         </div>
       </div>
       <div class="bg-white p-4 rounded-xl shadow-sm border space-y-3">
-        <h3 class="font-bold text-gray-800 text-sm border-b pb-2">🏷️ 店鋪基本資訊 / Informations du magasin</h3>
-    
+        <h3 class="font-bold text-gray-800 text-sm border-b pb-2">🏷️ 店鋪基本資訊</h3>
         <div>
-          <label class="block text-xs font-bold text-gray-600 mb-1">店鋪名稱 (Nom du magasin)</label>
+          <label class="block text-xs font-bold text-gray-600 mb-1">店鋪名稱</label>
           <input type="text" id="setting-store-name-input" placeholder="Cici Cuisine" class="w-full border p-2 rounded-lg text-xs bg-white text-gray-700">
         </div>
-    
         <div>
-          <label class="block text-xs font-bold text-gray-600 mb-1">店鋪標語 (Slogan)</label>
+          <label class="block text-xs font-bold text-gray-600 mb-1">店鋪標語</label>
           <input type="text" id="setting-store-slogan-input" placeholder="🕒 Livraison | 配送" class="w-full border p-2 rounded-lg text-xs bg-white text-gray-700">
         </div>
-    
-        <button type="button" onclick="saveStoreInfo()" class="w-full bg-green-500 hover:bg-green-600 text-white text-xs font-bold py-2.5 rounded-lg transition shadow-sm">
-          儲存店鋪資訊
-        </button>
+        <button type="button" onclick="saveStoreInfo()" class="w-full bg-green-500 hover:bg-green-600 text-white text-xs font-bold py-2.5 rounded-lg transition shadow-sm">儲存店鋪資訊</button>
         <p id="store-info-save-status" class="text-xs mt-1 text-center hidden"></p>
       </div>
-      <!-- 🌟 升級後：營業狀態、時間與每週送餐日設定區塊 -->
       <div class="bg-white p-4 rounded-xl shadow-sm border space-y-3">
-        <h3 class="font-bold text-gray-800 text-sm border-b pb-2">⏰ 營業狀態與時間設定 / Mode d'ouverture</h3>
-      
+        <h3 class="font-bold text-gray-800 text-sm border-b pb-2">⏰ 營業狀態與時間設定</h3>
         <div>
-          <label class="block text-xs font-bold text-gray-600 mb-1">營業時間標語 (Horaire d'ouverture)</label>
+          <label class="block text-xs font-bold text-gray-600 mb-1">營業時間標語</label>
           <input type="text" id="setting-hours-text-input" placeholder="🕒 13:00 - 10:00" class="w-full border p-2 rounded-lg text-xs bg-white text-gray-700">
         </div>
-      
         <div>
-          <label class="block text-xs font-bold text-gray-600 mb-1">營業狀態控制模式 (Mode de contrôle)</label>
+          <label class="block text-xs font-bold text-gray-600 mb-1">營業狀態控制模式</label>
           <select id="setting-business-mode-select" onchange="toggleManualOpenOption()" class="w-full border p-2 rounded-lg text-xs bg-white text-gray-700 font-bold">
             <option value="auto">🤖 自動模式（按巴黎時間系統自動判斷）</option>
             <option value="manual">✋ 手動模式（由群主強制指定開關）</option>
           </select>
         </div>
-      
         <div id="manual-open-container" class="hidden bg-gray-50 p-2.5 rounded-lg border">
-          <label class="block text-xs font-bold text-gray-600 mb-1">手動模式狀態 (Statut manuel)</label>
+          <label class="block text-xs font-bold text-gray-600 mb-1">手動模式狀態</label>
           <select id="setting-manual-open-select" class="w-full border p-2 rounded-lg text-xs bg-white text-gray-700 font-bold">
             <option value="true">🟢 強制營業中 (Ouvert)</option>
             <option value="false">🔴 強制暫停營業 / 公休 (Fermé)</option>
           </select>
         </div>
-
-        <!-- 🌟 新增：每週固定送餐日勾選 -->
         <div class="pt-2 border-t">
-          <label class="block text-xs font-bold text-gray-600 mb-1">📅 每週固定送餐日設定 / Jours de livraison</label>
-          <p class="text-[10px] text-gray-400 mb-2">請勾選每週開放營業送餐的日子（例如週一與週四）：</p>
+          <label class="block text-xs font-bold text-gray-600 mb-1">📅 每週固定送餐日設定</label>
           <div class="grid grid-cols-4 gap-2 text-xs font-bold text-gray-700">
-            <label class="flex items-center space-x-1.5 bg-gray-50 p-2 rounded border cursor-pointer">
-              <input type="checkbox" value="1" class="day-checkbox text-green-600"> <span>週一</span>
-            </label>
-            <label class="flex items-center space-x-1.5 bg-gray-50 p-2 rounded border cursor-pointer">
-              <input type="checkbox" value="2" class="day-checkbox text-green-600"> <span>週二</span>
-            </label>
-            <label class="flex items-center space-x-1.5 bg-gray-50 p-2 rounded border cursor-pointer">
-              <input type="checkbox" value="3" class="day-checkbox text-green-600"> <span>週三</span>
-            </label>
-            <label class="flex items-center space-x-1.5 bg-gray-50 p-2 rounded border cursor-pointer">
-              <input type="checkbox" value="4" class="day-checkbox text-green-600"> <span>週四</span>
-            </label>
-            <label class="flex items-center space-x-1.5 bg-gray-50 p-2 rounded border cursor-pointer">
-              <input type="checkbox" value="5" class="day-checkbox text-green-600"> <span>週五</span>
-            </label>
-            <label class="flex items-center space-x-1.5 bg-gray-50 p-2 rounded border cursor-pointer">
-              <input type="checkbox" value="6" class="day-checkbox text-green-600"> <span>週六</span>
-            </label>
-            <label class="flex items-center space-x-1.5 bg-gray-50 p-2 rounded border cursor-pointer">
-              <input type="checkbox" value="0" class="day-checkbox text-green-600"> <span>週日</span>
-            </label>
+            <label class="flex items-center space-x-1.5 bg-gray-50 p-2 rounded border cursor-pointer"><input type="checkbox" value="1" class="day-checkbox text-green-600"> <span>週一</span></label>
+            <label class="flex items-center space-x-1.5 bg-gray-50 p-2 rounded border cursor-pointer"><input type="checkbox" value="2" class="day-checkbox text-green-600"> <span>週二</span></label>
+            <label class="flex items-center space-x-1.5 bg-gray-50 p-2 rounded border cursor-pointer"><input type="checkbox" value="3" class="day-checkbox text-green-600"> <span>週三</span></label>
+            <label class="flex items-center space-x-1.5 bg-gray-50 p-2 rounded border cursor-pointer"><input type="checkbox" value="4" class="day-checkbox text-green-600"> <span>週四</span></label>
+            <label class="flex items-center space-x-1.5 bg-gray-50 p-2 rounded border cursor-pointer"><input type="checkbox" value="5" class="day-checkbox text-green-600"> <span>週五</span></label>
+            <label class="flex items-center space-x-1.5 bg-gray-50 p-2 rounded border cursor-pointer"><input type="checkbox" value="6" class="day-checkbox text-green-600"> <span>週六</span></label>
+            <label class="flex items-center space-x-1.5 bg-gray-50 p-2 rounded border cursor-pointer"><input type="checkbox" value="0" class="day-checkbox text-green-600"> <span>週日</span></label>
           </div>
         </div>
-      
-        <button type="button" onclick="saveBusinessHoursInfo()" class="w-full bg-green-500 hover:bg-green-600 text-white text-xs font-bold py-2.5 rounded-lg transition shadow-sm mt-2">
-          儲存營業與送餐日設定
-        </button>
+        <button type="button" onclick="saveBusinessHoursInfo()" class="w-full bg-green-500 hover:bg-green-600 text-white text-xs font-bold py-2.5 rounded-lg transition shadow-sm mt-2">儲存營業與送餐日設定</button>
         <p id="business-hours-save-status" class="text-xs mt-1 text-center hidden"></p>
       </div>
-      
-      <!-- 🌟 新增：修改後台密碼區塊 -->
       <div class="bg-white p-4 rounded-xl shadow-sm border space-y-3">
-        <h3 class="font-bold text-gray-800 text-sm border-b pb-2">🔑 修改後台密碼 / Changer le mot de passe</h3>
-      
+        <h3 class="font-bold text-gray-800 text-sm border-b pb-2">🔑 修改後台密碼</h3>
         <div>
-          <label class="block text-xs font-bold text-gray-600 mb-1">舊密碼 (Ancien mot de passe)</label>
+          <label class="block text-xs font-bold text-gray-600 mb-1">舊密碼</label>
           <input type="password" id="setting-old-password" placeholder="請輸入舊密碼" class="w-full border p-2 rounded-lg text-xs bg-white text-gray-700">
         </div>
-
         <div>
-          <label class="block text-xs font-bold text-gray-600 mb-1">新密碼 (Nouveau mot de passe)</label>
+          <label class="block text-xs font-bold text-gray-600 mb-1">新密碼</label>
           <input type="password" id="setting-new-password" placeholder="請輸入新密碼" class="w-full border p-2 rounded-lg text-xs bg-white text-gray-700">
         </div>
-      
-        <button type="button" onclick="saveAdminPassword()" class="w-full bg-green-500 hover:bg-green-600 text-white text-xs font-bold py-2.5 rounded-lg transition shadow-sm">
-          更新密碼
-        </button>
+        <button type="button" onclick="saveAdminPassword()" class="w-full bg-green-500 hover:bg-green-600 text-white text-xs font-bold py-2.5 rounded-lg transition shadow-sm">更新密碼</button>
         <p id="admin-password-save-status" class="text-xs mt-1 text-center hidden"></p>
       </div>
     </div>
-    
   </div>
 
-  <div id="dish-modal" class="hidden fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
-    <div class="bg-white w-full max-w-md rounded-2xl p-5 space-y-3 shadow-2xl max-h-[90vh] overflow-y-auto">
-      <div class="flex justify-between items-center border-b pb-2">
-        <h3 id="dish-modal-title" class="font-bold text-sm text-gray-800">Ajouter un plat / 新增菜品</h3>
-        <button type="button" onclick="closeDishModal()" class="text-gray-400 font-bold">✕</button>
-      </div>
-      <input type="hidden" id="dish-id">
-      
-      <div>
-        <label class="block text-xs font-bold text-gray-600 mb-1">Image du plat / 菜品圖片</label>
-        <div class="flex items-center gap-3">
-          <div id="dish-img-preview" class="w-16 h-16 rounded-lg bg-gray-100 border flex items-center justify-center text-gray-400 text-xs overflow-hidden flex-shrink-0">
-            無圖片
-          </div>
-          <div class="flex-1 space-y-1">
-            <input type="file" id="dish-img-file" accept="image/*" class="w-full text-[11px] text-gray-500 file:mr-2 file:py-1 file:px-2 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-green-50 file:text-green-700 hover:file:bg-green-100">
-            <input id="dish-image-url" type="text" class="w-full border p-1.5 rounded text-[10px]" placeholder="或直接貼上圖片 URL 網址">
-          </div>
-        </div>
-      </div>
-
-      <div>
-        <label class="block text-xs font-bold text-gray-600 mb-1">Nom (FR) / 法文名稱 *</label>
-        <input id="dish-name-fr" type="text" class="w-full border p-2 rounded text-xs" placeholder="Ex: Poulet Croustillant">
-      </div>
-      
-      <div>
-        <label class="block text-xs font-bold text-gray-600 mb-1">Nom (ZH) / 中文名稱 *</label>
-        <input id="dish-name-zh" type="text" class="w-full border p-2 rounded text-xs" placeholder="例如：香酥雞">
-      </div>
-      
-      <div class="grid grid-cols-2 gap-2">
-        <div>
-          <label class="block text-xs font-bold text-gray-600 mb-1">Prix (€) / 價格 *</label>
-          <input id="dish-price" type="number" step="0.01" class="w-full border p-2 rounded text-xs" placeholder="12.50">
-        </div>
-        <div>
-          <label class="block text-xs font-bold text-gray-600 mb-1">Catégorie / 分類 *</label>
-          <select id="dish-category" class="w-full border p-2 rounded text-xs bg-white">
-            <option value="每日特色">Spécialité / 每日特色</option>
-            <option value="葷菜">Viandes / 葷菜</option>
-            <option value="海鮮類">Poissons & Seafood / 海鮮類</option>
-            <option value="牛肉類">Bœuf / 牛肉類</option>
-            <option value="素菜">Légumes / 素菜</option>
-            <option value="主食">Riz/Nouilles / 主食</option>
-          </select>
-        </div>
-      </div>
-
-      <div class="grid grid-cols-2 gap-2">
-        <div>
-          <label class="block text-xs font-bold text-gray-600 mb-1">Ordre / 排序號</label>
-          <input id="dish-sort" type="number" class="w-full border p-2 rounded text-xs" placeholder="1">
-        </div>
-        <div>
-          <label class="block text-xs font-bold text-gray-600 mb-1">Stock / 剩餘數量 (庫存)</label>
-          <input id="dish-stock" type="number" min="0" class="w-full border p-2 rounded text-xs" placeholder="99">
-        </div>
-      </div>
-      
-      <button type="button" onclick="saveDish()" class="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-2.5 rounded-xl text-xs shadow transition">
-        Enregistrer / 保存菜品
-      </button>
-    </div>
-  </div>
-
-  <div id="dish-detail-modal" class="hidden fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
-    <div class="bg-white w-full max-w-sm rounded-2xl overflow-hidden shadow-2xl relative animate-scale-up">
-      <button type="button" onclick="closeDishDetailModal()" class="absolute top-3 right-3 bg-black/50 hover:bg-black/70 text-white w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm z-10 transition">
-        ✕
-      </button>
-      
-      <div id="detail-modal-img-container" class="w-full h-56 bg-gray-100 flex items-center justify-center overflow-hidden"></div>
-
-      <div class="p-5 space-y-3">
-        <div>
-          <h3 id="detail-modal-name-fr" class="font-extrabold text-lg text-gray-800 leading-tight"></h3>
-          <p id="detail-modal-name-zh" class="text-sm text-gray-500 mt-0.5"></p>
-        </div>
-
-        <div class="flex justify-between items-center pt-2 border-t">
-          <span id="detail-modal-price" class="text-xl font-black text-green-600">0.00 €</span>
-          <span id="detail-modal-stock" class="text-xs text-orange-600 bg-orange-50 px-2 py-1 rounded-full border border-orange-100 font-bold">Stock: 99</span>
-        </div>
-
-        <button id="detail-modal-add-btn" type="button" class="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-3 rounded-xl text-sm shadow transition active:scale-95">
-          Ajouter au panier / 加入購物車 🛒
-        </button>
-      </div>
-    </div>
-  </div>
+  <!-- 其它彈窗 -->
+  <div id="dish-modal" class="hidden fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4"></div>
+  <div id="dish-detail-modal" class="hidden fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4"></div>
 
   <script src="app.js"></script>
 </body>
