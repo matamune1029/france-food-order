@@ -106,9 +106,23 @@
           <label class="block text-xs font-bold text-gray-600 mb-1">Téléphone (FR) / 法國聯繫電話 *</label>
           <input id="cust-phone" type="tel" placeholder="Ex: 06 12 34 56 78" class="w-full border border-gray-300 p-2.5 rounded-lg text-sm focus:outline-none focus:border-green-500">
         </div>
-        <div>
-          <label class="block text-xs font-bold text-gray-600 mb-1">Adresse de livraison / 送餐地址 *</label>
-          <input id="cust-address" type="text" placeholder="Ex: 12 Rue de Rivoli, Paris 75001" class="w-full border border-gray-300 p-2.5 rounded-lg text-sm focus:outline-none focus:border-green-500">
+        <!-- 📦 取餐方式選擇（必選） -->
+        <div class="mb-3">
+          <label class="block text-xs font-bold text-gray-700 mb-1">
+            Mode de retrait / 取餐方式 <span class="text-red-500">*</span>
+          </label>
+          <select id="cust-fulfillment" onchange="toggleFulfillmentMode()" class="w-full border rounded-lg p-2 text-xs font-bold bg-white text-gray-800">
+            <option value="delivery">🛵 配送上門 (Livraison - 6km max)</option>
+            <option value="pickup">🛍️ 到店自取 (À emporter - Gratuit)</option>
+          </select>
+        </div>
+        
+        <!-- 📍 地址欄位容器（如果是自取會自動隱藏） -->
+        <div id="address-container" class="mb-3">
+          <label class="block text-xs font-bold text-gray-700 mb-1">
+            Adresse de livraison / 送餐地址 <span class="text-red-500">*</span>
+          </label>
+          <input type="text" id="cust-address" placeholder="ex: 10 Rue de la République, 34000 Montpellier" class="w-full border rounded-lg p-2 text-xs">
         </div>
         <div>
           <label class="block text-xs font-bold text-gray-600 mb-1">Remarques / 備註 (選填)</label>
