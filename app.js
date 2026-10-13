@@ -1634,13 +1634,42 @@ async function saveBusinessHoursInfo() {
   const manualSelect = document.getElementById('setting-manual-open-select');
   const statusEl = document.getElementById('business-hours-save-status');
 
+  if (!hoursInput || !modeSelect || !manualSelect) return;
+
+  const newHoursText = hoursInput.value.trim() || "🕒 13:00 - 10:00 (Lundi - Dimanche)";
+
+  // 🛡️ 防呆驗證：檢查時間邏輯是否合理
+  const match = newHoursText.match(/(\d{1,2}):(\d{2})\s*-\s*(\d{1,2}):(\d{2})/);
+  if (match) {
+    const startH = parseInt(match[1], 10);
+    const startM = parseInt(match[2], 10);
+    const endH = parseInt(match[3], 10);
+    const endM = parseInt(match[4], 10);
+
+    const startMin = startH * 60 + startM;
+    const endMin = endH * 60 + endM;
+
+    // 1. 開始與結束時間不能完全相同
+    if (startMin === endMin) {
+      alert("❌ 營業時間設定錯誤：開始時間與結束時間不能相同！");
+      return;
+    }
+
+    // 2. 如果結束時間小於開始時間（代表是跨日營業，例如 13:00 - 10:00）
+    if (startMin > endMin) {
+      // 限制合法跨日：必須是下午或晚上開始（>= 12:00），且在隔天中午前結束（<= 12:00）
+      const isLegalCrossDay = (startH >= 12 && endH <= 12);
+      if (!isLegalCrossDay) {
+        alert("❌ 營業時間設定錯誤：不合法的跨日時間範圍！");
+        return;
+      }
+    }
+  }
+
   // 1. 抓取勾選的星期
   const checkboxes = document.querySelectorAll('.day-checkbox:checked');
   const selectedDays = Array.from(checkboxes).map(chk => parseInt(chk.value, 10));
 
-  if (!hoursInput || !modeSelect || !manualSelect) return;
-
-  const newHoursText = hoursInput.value.trim() || "🕒 13:00 - 10:00 (Lundi - Dimanche)";
   const newMode = modeSelect.value;
   const newManualOpen = manualSelect.value === 'true';
 
@@ -1682,7 +1711,6 @@ async function saveBusinessHoursInfo() {
     }
   }
 }
-
 // 🔑 修改後台密碼函式
 async function saveAdminPassword() {
   const oldPassInput = document.getElementById('setting-old-password');
