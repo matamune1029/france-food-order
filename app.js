@@ -536,7 +536,6 @@ async function submitOrder() {
 
     let fullDeliveryAddress = '到店自取 (Click & Collect)';
 
-    // 🛡️ 配送模式下的驗證：必須選擇郵編 + 填寫詳細地址
     if (fulfillmentMode === 'delivery') {
       const postCodeSelect = document.getElementById('cust-postcode').value;
       const addressInput = document.getElementById('cust-address').value.trim();
@@ -548,7 +547,6 @@ async function submitOrder() {
         return alert('Veuillez entrer votre adresse de livraison ! / 請填寫詳細送餐地址！');
       }
 
-      // 組合最終地址（例如：10 Rue de la République, 34000 Montpellier）
       fullDeliveryAddress = `${addressInput}, ${postCodeSelect} Montpellier`;
     }
 
@@ -574,34 +572,58 @@ async function submitOrder() {
       console.warn("即時同步後台設定失敗，使用現有設定", e);
     }
 
-    const items = Object.keys(cart).map(id => {
-      const item = menuData.find(i => i.id === id);
-      return { 
-        id,
-        name_fr: item ? item.name_fr : 'Plat', 
-        name_zh: item ? item.name_zh : '菜品', 
-        qty: cart[id], 
-        price: item ? item.price : 0 
-      };
-    });
-    
-    const total = parseFloat(document.getElementById('total-price').innerText);
+    // 🛡️【價格防竄改核心邏輯】：不信任前端購物車的價格，由伺服器/資料庫即時核對真實價格
+    let calculatedTotal = 0;
+    const verifiedItems = [];
+    const itemsForWhatsApp = [];
+
+    for (let id in cart) {
+      const qty = cart[id];
+      // 即時向資料庫查詢該菜品的最新真實價格與名稱
+      const { data: menuItem, error: menuErr } = await supabaseClient
+        .from('menu_items')
+        .select('name_fr, name_zh, price')
+        .eq('id', id)
+        .single();
+
+      if (menuErr || !menuItem) {
+        throw new Error(`找不到菜品或價格驗證失敗 (ID: ${id})`);
+      }
+
+      const realPrice = parseFloat(menuItem.price) || 0;
+      calculatedTotal += realPrice * qty;
+
+      // 準備存入資料庫的明細（使用資料庫抓到的真實價格）
+      verifiedItems.push({
+        name: `${menuItem.name_fr} (${menuItem.name_zh})`,
+        qty: qty,
+        price: realPrice
+      });
+
+      // 準備 WhatsApp 用的明細
+      itemsForWhatsApp.push({
+        name_fr: menuItem.name_fr,
+        name_zh: menuItem.name_zh,
+        qty: qty,
+        price: realPrice
+      });
+    }
+
     const orderId = generateOrderCode();
     const deliveryDateISO = resolveDeliveryDate(dateSelect);
     const deliverySlot = `${dateSelect} - ${timeSelect}`;
 
-    // 格式化聯繫資訊
     const fulfillmentText = fulfillmentMode === 'pickup' ? '[到店自取 Click & Collect]' : `[配送 Livraison] Adresse: ${fullDeliveryAddress}`;
     const fullContactInfo = `[${deliverySlot}] ${phone} | ${fulfillmentText}${note ? ' | Note: ' + note : ''}`;
-    const dbItems = items.map(i => ({ name: `${i.name_fr} (${i.name_zh})`, qty: i.qty, price: i.price }));
 
+    // 將由後端驗證計算出的總金額與品項寫入資料庫
     let { data, error } = await supabaseClient.from('orders').insert([
-      { customer_name: name, phone: fullContactInfo, items: dbItems, total_price: total, status: 'pending', order_code: orderId, delivery_date: deliveryDateISO }
+      { customer_name: name, phone: fullContactInfo, items: verifiedItems, total_price: calculatedTotal, status: 'pending', order_code: orderId, delivery_date: deliveryDateISO }
     ]).select();
 
     if (error && /order_code|delivery_date/.test(error.message || '')) {
       ({ data, error } = await supabaseClient.from('orders').insert([
-        { customer_name: name, phone: fullContactInfo, items: dbItems, total_price: total, status: 'pending' }
+        { customer_name: name, phone: fullContactInfo, items: verifiedItems, total_price: calculatedTotal, status: 'pending' }
       ]).select());
     }
 
@@ -613,37 +635,38 @@ async function submitOrder() {
 
     const realDbId = data[0].id;
 
-    for (let cartItem of items) {
-      const targetDish = menuData.find(m => m.id === cartItem.id);
+    // 扣減庫存
+    for (let id in cart) {
+      const qty = cart[id];
+      const targetDish = menuData.find(m => m.id === id);
       if (targetDish) {
         const currentStock = (typeof targetDish.stock === 'number') ? targetDish.stock : 99;
-        const newStock = Math.max(0, currentStock - cartItem.qty);
+        const newStock = Math.max(0, currentStock - qty);
         const newAvailable = newStock > 0 ? (targetDish.is_available !== false) : false;
 
         await supabaseClient
           .from('menu_items')
           .update({ stock: newStock, is_available: newAvailable })
-          .eq('id', cartItem.id);
+          .eq('id', id);
 
         targetDish.stock = newStock;
         targetDish.is_available = newAvailable;
       }
     }
 
-    lastOrderDetails = { dbId: realDbId, orderId, deliverySlot, name, phone, address: fullDeliveryAddress, note, items, total };
+    lastOrderDetails = { dbId: realDbId, orderId, deliverySlot, name, phone, address: fullDeliveryAddress, note, items: itemsForWhatsApp, total: calculatedTotal };
     saveOrderToLocal(lastOrderDetails);
 
     cart = {};
     closeCheckoutModal();
-
     playOrderSuccessSound();
 
     const whatsappOrderData = {
       customer_name: name,
       customer_phone: phone,
       delivery_address: `${fullDeliveryAddress} (${deliverySlot})${note ? ' - 備註: ' + note : ''}`,
-      items: items.map(i => ({ name: `${i.name_fr} (${i.name_zh})`, quantity: i.qty, price: i.price })),
-      total_price: total
+      items: itemsForWhatsApp.map(i => ({ name: `${i.name_fr} (${i.name_zh})`, quantity: i.qty, price: i.price })),
+      total_price: calculatedTotal
     };
     
     const whatsappUrl = generateWhatsAppLink(whatsappOrderData, orderId);
