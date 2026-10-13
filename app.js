@@ -829,7 +829,7 @@ async function toggleMode(forceCheck = false) {
 
     try {
       // 🌟 使用 Supabase Auth 官方安全驗證（預設綁定你的管理員信箱）
-      const adminEmail = "admin@cicicuisine.com"; // 請改成你在第一步建立的信箱
+      const adminEmail = "gordontsun1029@gmail.com"; // 請改成你在第一步建立的信箱
       
       const { data, error } = await supabaseClient.auth.signInWithPassword({
         email: adminEmail,
