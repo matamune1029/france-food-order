@@ -1,5 +1,6 @@
 // config.js 範例
 window.STORE_GLOBAL_CONFIG = {
+  restaurantId: 'cici_cuisine', // 只要換這裡的代號就好！
   supabaseUrl: 'https://xxx.supabase.co',
   supabaseKey: 'sb_publishable_xxx',
   fallbackWhatsapp: '33600000000',
