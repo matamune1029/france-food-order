@@ -941,7 +941,7 @@ function applyOrderFilters() {
         <div class="flex justify-between items-start font-bold text-gray-800">
           <div>
             <div class="flex items-center gap-2">
-              <span class="text-sm">👤 ${o.customer_name || '匿名顧客'}</span>
+              <span class="text-sm">👤 ${escapeHtml(o.customer_name || '匿名顧客')}</span>
               ${statusBadgeMap[st] || statusBadgeMap['pending']}
               ${whatsappBadge}
             </div>
@@ -951,7 +951,7 @@ function applyOrderFilters() {
         </div>
 
         <div class="text-xs font-medium text-orange-700 bg-orange-50 p-2 rounded-lg border border-orange-100 break-all leading-relaxed">
-          📍 ${o.phone || '無聯繫資訊'}
+          📍 ${escapeHtml(o.phone || '無聯繫資訊')}
         </div>
 
         <ul class="text-xs bg-gray-50 p-2.5 rounded-lg border space-y-1 text-gray-700">
