@@ -293,13 +293,13 @@
         </button>
         <p id="store-info-save-status" class="text-xs mt-1 text-center hidden"></p>
       </div>
-      <!-- 🌟 新增：營業狀態與時間設定區塊 -->
+      <!-- 🌟 升級後：營業狀態、時間與每週送餐日設定區塊 -->
       <div class="bg-white p-4 rounded-xl shadow-sm border space-y-3">
         <h3 class="font-bold text-gray-800 text-sm border-b pb-2">⏰ 營業狀態與時間設定 / Mode d'ouverture</h3>
       
         <div>
           <label class="block text-xs font-bold text-gray-600 mb-1">營業時間標語 (Horaire d'ouverture)</label>
-          <input type="text" id="setting-hours-text-input" placeholder="🕒 12:00 - 14:00 (Lundi - Samedi)" class="w-full border p-2 rounded-lg text-xs bg-white text-gray-700">
+          <input type="text" id="setting-hours-text-input" placeholder="🕒 13:00 - 10:00" class="w-full border p-2 rounded-lg text-xs bg-white text-gray-700">
         </div>
       
         <div>
@@ -317,9 +317,38 @@
             <option value="false">🔴 強制暫停營業 / 公休 (Fermé)</option>
           </select>
         </div>
+
+        <!-- 🌟 新增：每週固定送餐日勾選 -->
+        <div class="pt-2 border-t">
+          <label class="block text-xs font-bold text-gray-600 mb-1">📅 每週固定送餐日設定 / Jours de livraison</label>
+          <p class="text-[10px] text-gray-400 mb-2">請勾選每週開放營業送餐的日子（例如週一與週四）：</p>
+          <div class="grid grid-cols-4 gap-2 text-xs font-bold text-gray-700">
+            <label class="flex items-center space-x-1.5 bg-gray-50 p-2 rounded border cursor-pointer">
+              <input type="checkbox" value="1" class="day-checkbox text-green-600"> <span>週一</span>
+            </label>
+            <label class="flex items-center space-x-1.5 bg-gray-50 p-2 rounded border cursor-pointer">
+              <input type="checkbox" value="2" class="day-checkbox text-green-600"> <span>週二</span>
+            </label>
+            <label class="flex items-center space-x-1.5 bg-gray-50 p-2 rounded border cursor-pointer">
+              <input type="checkbox" value="3" class="day-checkbox text-green-600"> <span>週三</span>
+            </label>
+            <label class="flex items-center space-x-1.5 bg-gray-50 p-2 rounded border cursor-pointer">
+              <input type="checkbox" value="4" class="day-checkbox text-green-600"> <span>週四</span>
+            </label>
+            <label class="flex items-center space-x-1.5 bg-gray-50 p-2 rounded border cursor-pointer">
+              <input type="checkbox" value="5" class="day-checkbox text-green-600"> <span>週五</span>
+            </label>
+            <label class="flex items-center space-x-1.5 bg-gray-50 p-2 rounded border cursor-pointer">
+              <input type="checkbox" value="6" class="day-checkbox text-green-600"> <span>週六</span>
+            </label>
+            <label class="flex items-center space-x-1.5 bg-gray-50 p-2 rounded border cursor-pointer">
+              <input type="checkbox" value="0" class="day-checkbox text-green-600"> <span>週日</span>
+            </label>
+          </div>
+        </div>
       
-        <button type="button" onclick="saveBusinessHoursInfo()" class="w-full bg-green-500 hover:bg-green-600 text-white text-xs font-bold py-2.5 rounded-lg transition shadow-sm">
-          儲存營業設定
+        <button type="button" onclick="saveBusinessHoursInfo()" class="w-full bg-green-500 hover:bg-green-600 text-white text-xs font-bold py-2.5 rounded-lg transition shadow-sm mt-2">
+          儲存營業與送餐日設定
         </button>
         <p id="business-hours-save-status" class="text-xs mt-1 text-center hidden"></p>
       </div>
