@@ -156,6 +156,7 @@ function checkIsBusinessOpen() {
 }
 
 // 🗓️ 根據當前時間自動鎖定下單的日期選項（13:00-凌晨只能選明天，凌晨-10:00只能選今天）
+// 🗓️ 動態讀取後台設定的營業時間，自動鎖定結算視窗的「今天」或「明天」
 function updateCheckoutDateOptions() {
   const dateSelect = document.getElementById('cust-date');
   if (!dateSelect) return;
@@ -169,26 +170,42 @@ function updateCheckoutDateOptions() {
       hour12: false
     });
     let hour = 0;
+    let minute = 0;
     formatter.formatToParts(now).forEach(p => {
       if (p.type === 'hour') hour = parseInt(p.value, 10);
+      if (p.type === 'minute') minute = parseInt(p.value, 10);
     });
+    const currentMinutes = hour * 60 + minute;
+
+    // 🌟 動態從後台設定的「營業時間標語」中抓取開始與結束時間（例如 "16:00 - 15:00"）
+    let openMinutes = 13 * 60;   // 預設 13:00
+    let closeMinutes = 10 * 60;  // 預設次日 10:00
+
+    const text = STORE_CONFIG.storeHoursText || "";
+    const match = text.match(/(\d{1,2}):(\d{2})\s*-\s*(\d{1,2}):(\d{2})/);
+    if (match) {
+      openMinutes = parseInt(match[1], 10) * 60 + parseInt(match[2], 10);
+      closeMinutes = parseInt(match[3], 10) * 60 + parseInt(match[4], 10);
+    }
 
     // 清空並重新組合選項
     dateSelect.innerHTML = '<option value="">-- Choisir le jour / 請選擇日期 --</option>';
 
-    if (hour >= 13) {
-      // 13:00 到 23:59：只能選明天
+    // 如果當前時間大於等於「開始營業時間」（例如 16:00 之後），代表是下午/晚上下的單，送餐日為「明天」
+    if (currentMinutes >= openMinutes) {
       dateSelect.innerHTML += `<option value="Demain (明天)">Demain / 明天 (${getParisDateStr(1)})</option>`;
       dateSelect.value = "Demain (明天)";
-    } else if (hour < 10) {
-      // 00:00 到 10:00：只能選今天
+    } 
+    // 如果當前時間小於「結束營業時間」（例如 00:00 到 15:00 之間），代表是當天清晨下的單，送餐日為「今天」
+    else if (currentMinutes < closeMinutes) {
       dateSelect.innerHTML += `<option value="Aujourd'hui (當天)">Aujourd'hui / 當天 (${getParisDateStr(0)})</option>`;
       dateSelect.value = "Aujourd'hui (當天)";
-    } else {
-      // 10:00 到 13:00 休息時間
+    } 
+    // 介於結束與開始之間的休息時間
+    else {
       dateSelect.innerHTML += `
-        <option value="Aujourd'hui (當天)">Aujourd'hui / 當天</option>
-        <option value="Demain (明天)">Demain / 明天</option>
+        <option value="Aujourd'hui (當天)">Aujourd'hui / 當天 (${getParisDateStr(0)})</option>
+        <option value="Demain (明天)">Demain / 明天 (${getParisDateStr(1)})</option>
       `;
     }
   } catch (e) {
