@@ -522,7 +522,6 @@ async function submitOrder() {
     const timeSelect = document.getElementById('cust-time').value;
     const name = document.getElementById('cust-name').value.trim();
     const phone = document.getElementById('cust-phone').value.trim();
-    const address = document.getElementById('cust-address').value.trim();
     const note = document.getElementById('cust-note').value.trim();
 
     if (!dateSelect) return alert('Veuillez choisir le jour de livraison ! / 請選擇配送日期！');
@@ -535,28 +534,22 @@ async function submitOrder() {
       return alert('Veuillez entrer un numéro de téléphone français valide (ex: 0612345678) ! / 請填寫有效的法國手機號碼！');
     }
 
-    // 🛡️ 只有在選擇「配送」時，才強制檢查地址與 6 公里郵遞區號白名單
+    let fullDeliveryAddress = '到店自取 (Click & Collect)';
+
+    // 🛡️ 配送模式下的驗證：必須選擇郵編 + 填寫詳細地址
     if (fulfillmentMode === 'delivery') {
-      if (!address || address.includes('到店自取')) {
-        return alert('Veuillez entrer votre adresse de livraison ! / 請填寫送餐地址！');
+      const postCodeSelect = document.getElementById('cust-postcode').value;
+      const addressInput = document.getElementById('cust-address').value.trim();
+
+      if (!postCodeSelect) {
+        return alert('Veuillez sélectionner votre code postal ! / 請選擇配送郵遞區號！');
+      }
+      if (!addressInput || addressInput.includes('到店自取')) {
+        return alert('Veuillez entrer votre adresse de livraison ! / 請填寫詳細送餐地址！');
       }
 
-      const allowedPostalCodes = [
-        "34000", // 市中心
-        "34070", // 南部
-        "34080", // 西部
-        "34090", // 北部 (店鋪所在地)
-        "34170", // Castelnau-le-Lez
-        "34830"  // Clapiers
-      ];
-
-      const fullTextToCheck = address + " " + note;
-      const hasValidPostalCode = allowedPostalCodes.some(code => fullTextToCheck.includes(code));
-
-      if (!hasValidPostalCode) {
-        alert(`❌ Désolé, votre adresse est hors de notre zone de livraison (6 km max) !\n\nVeuillez vérifier que vous avez bien indiqué un code postal valide à 5 chiffres (ex: 34090).\n\n--------------------\n抱歉，您的地址超出 6 公里配送範圍，或未填寫正確的 5 位數郵遞區號（例如 34090）！`);
-        return;
-      }
+      // 組合最終地址（例如：10 Rue de la République, 34000 Montpellier）
+      fullDeliveryAddress = `${addressInput}, ${postCodeSelect} Montpellier`;
     }
 
     if (submitBtn) {
@@ -565,7 +558,7 @@ async function submitOrder() {
       submitBtn.innerText = 'Traitement en cours... / 提交中...';
     }
 
-    // 同步最新的 WhatsApp 號碼與店鋪名稱
+    // 同步後台設定
     try {
       const { data: latestSetting } = await supabaseClient
         .from('store_settings')
@@ -597,8 +590,8 @@ async function submitOrder() {
     const deliveryDateISO = resolveDeliveryDate(dateSelect);
     const deliverySlot = `${dateSelect} - ${timeSelect}`;
 
-    // 判斷聯絡資訊顯示格式（自取 vs 配送）
-    const fulfillmentText = fulfillmentMode === 'pickup' ? '[到店自取 Click & Collect]' : `[配送 Livraison] Adresse: ${address}`;
+    // 格式化聯繫資訊
+    const fulfillmentText = fulfillmentMode === 'pickup' ? '[到店自取 Click & Collect]' : `[配送 Livraison] Adresse: ${fullDeliveryAddress}`;
     const fullContactInfo = `[${deliverySlot}] ${phone} | ${fulfillmentText}${note ? ' | Note: ' + note : ''}`;
     const dbItems = items.map(i => ({ name: `${i.name_fr} (${i.name_zh})`, qty: i.qty, price: i.price }));
 
@@ -607,7 +600,6 @@ async function submitOrder() {
     ]).select();
 
     if (error && /order_code|delivery_date/.test(error.message || '')) {
-      console.warn('orders 表缺少 order_code / delivery_date 欄位，改用舊格式寫入。');
       ({ data, error } = await supabaseClient.from('orders').insert([
         { customer_name: name, phone: fullContactInfo, items: dbItems, total_price: total, status: 'pending' }
       ]).select());
@@ -638,7 +630,7 @@ async function submitOrder() {
       }
     }
 
-    lastOrderDetails = { dbId: realDbId, orderId, deliverySlot, name, phone, address: fulfillmentMode === 'pickup' ? '到店自取 (Click & Collect)' : address, note, items, total };
+    lastOrderDetails = { dbId: realDbId, orderId, deliverySlot, name, phone, address: fullDeliveryAddress, note, items, total };
     saveOrderToLocal(lastOrderDetails);
 
     cart = {};
@@ -649,7 +641,7 @@ async function submitOrder() {
     const whatsappOrderData = {
       customer_name: name,
       customer_phone: phone,
-      delivery_address: fulfillmentMode === 'pickup' ? `到店自取 (Click & Collect) (${deliverySlot})${note ? ' - 備註: ' + note : ''}` : `${address} (${deliverySlot})${note ? ' - 備註: ' + note : ''}`,
+      delivery_address: `${fullDeliveryAddress} (${deliverySlot})${note ? ' - 備註: ' + note : ''}`,
       items: items.map(i => ({ name: `${i.name_fr} (${i.name_zh})`, quantity: i.qty, price: i.price })),
       total_price: total
     };
