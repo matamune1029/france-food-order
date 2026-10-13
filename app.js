@@ -846,21 +846,23 @@ async function toggleMode(forceCheck = false) {
   const customerView = document.getElementById('customer-view');
 
   if ((adminView.classList.contains('hidden') || forceCheck) && !isAdminLoggedIn) {
-    // 💡 為了方便，我們讓老闆直接輸入密碼（或改成輸入信箱與密碼）
+    // 🌟 1. 彈出輸入框讓使用者輸入管理員信箱
+    const adminEmail = prompt("📧 請輸入管理員信箱 (Email Admin)：");
+    if (!adminEmail) return;
+
+    // 🌟 2. 彈出輸入框讓使用者輸入密碼
     const password = prompt("🔐 請輸入管理員密碼 (Mot de passe Admin)：");
     if (!password) return;
 
     try {
-      // 🌟 使用 Supabase Auth 官方安全驗證（預設綁定你的管理員信箱）
-      const adminEmail = "gordontsun.fr@gmail.com"; // 請改成你在第一步建立的信箱
-      
+      // 🌟 3. 使用輸入的信箱與密碼向 Supabase Auth 進行安全驗證
       const { data, error } = await supabaseClient.auth.signInWithPassword({
-        email: adminEmail,
+        email: adminEmail.trim(),
         password: password
       });
 
       if (error) {
-        alert("❌ 登入失敗 / Mot de passe incorrect：" + error.message);
+        alert("❌ 登入失敗 / Identifiants incorrects：" + error.message);
         return;
       }
 
@@ -871,6 +873,23 @@ async function toggleMode(forceCheck = false) {
       return;
     }
   }
+
+  adminView.classList.toggle('hidden');
+  customerView.classList.toggle('hidden');
+
+  if (!adminView.classList.contains('hidden')) {
+    fetchOrders();
+    initAdminRealtimeListener(); 
+  } else {
+    // 離開後台時自動登出，確保安全
+    supabaseClient.auth.signOut();
+    isAdminLoggedIn = false;
+    if (orderChannel) {
+      supabaseClient.removeChannel(orderChannel);
+      orderChannel = null;
+    }
+  }
+}
 
   adminView.classList.toggle('hidden');
   customerView.classList.toggle('hidden');
