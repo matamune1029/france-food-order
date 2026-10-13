@@ -385,7 +385,15 @@
       </div>
       
       <!-- 🌟 新增：修改後台密碼區塊 -->
-
+      <div class="bg-white p-4 rounded-xl shadow-sm border space-y-3">
+        <h3 class="font-bold text-gray-800 text-sm border-b pb-2">🔑 管理員密碼重設 / Réinitialisation du mot de passe</h3>
+        <p class="text-[11px] text-gray-500">點擊下方按鈕，系統將發送一封密碼重設信件至目前登入管理員的信箱。</p>
+        
+        <button type="button" onclick="sendPasswordResetEmail()" class="w-full bg-blue-500 hover:bg-blue-600 text-white text-xs font-bold py-2.5 rounded-lg transition shadow-sm">
+          📧 發送密碼重設信件 / Envoyer l'e-mail de réinitialisation
+        </button>
+        <p id="reset-password-status" class="text-xs mt-1 text-center hidden"></p>
+      </div>
     </div>
     
   </div>
