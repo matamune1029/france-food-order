@@ -1787,3 +1787,52 @@ async function sendPasswordResetEmail() {
     }
   }
 }
+
+// 🔍 網頁載入時自動檢查網址是否為 Supabase 的重設密碼回調 (Recovery Mode)
+window.addEventListener('DOMContentLoaded', () => {
+  // 檢查網址的 hash 或 query 是否包含 type=recovery 或是 access_token
+  const hashParams = new URLSearchParams(window.location.hash.substring(1));
+  const queryParams = new URLSearchParams(window.location.search);
+  
+  if (hashParams.get('type') === 'recovery' || queryParams.get('type') === 'recovery') {
+    // 彈出重設密碼專用視窗
+    const resetModal = document.getElementById('reset-password-modal');
+    if (resetModal) {
+      resetModal.classList.remove('hidden');
+    }
+  }
+});
+
+// 🔐 提交並儲存老闆透過信件點進來後輸入的新密碼
+async function submitNewPassword() {
+  const newPassInput = document.getElementById('new-recovery-password');
+  if (!newPassInput) return;
+  
+  const newPassword = newPassInput.value.trim();
+  if (!newPassword || newPassword.length < 6) {
+    alert("❌ 密碼長度至少需要 6 個字元！\nLe mot de passe doit contenir au moins 6 caractères.");
+    return;
+  }
+
+  try {
+    // 透過 Supabase 更新當前被 recovery token 認證的使用者密碼
+    const { error } = await supabaseClient.auth.updateUser({
+      password: newPassword
+    });
+
+    if (error) throw error;
+
+    alert("✅ 密碼已成功更新！請使用新密碼重新登入後台。\nMot de passe mis à jour avec succès !");
+    
+    // 關閉彈窗
+    const resetModal = document.getElementById('reset-password-modal');
+    if (resetModal) resetModal.classList.add('hidden');
+
+    // 清除網址上的 token 尾巴，導回乾淨的首頁
+    window.location.href = window.location.href.split('#')[0].split('?')[0];
+
+  } catch (err) {
+    console.error("更新密碼失敗:", err);
+    alert("❌ 更新失敗: " + err.message);
+  }
+}
