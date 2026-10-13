@@ -818,8 +818,6 @@ function handleSecretClick() {
 
 let isAdminLoggedIn = false;
 
-let isAdminLoggedIn = false;
-
 async function toggleMode(forceCheck = false) {
   const adminView = document.getElementById('admin-view');
   const customerView = document.getElementById('customer-view');
