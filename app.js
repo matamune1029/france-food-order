@@ -35,6 +35,17 @@ const fixedCategories = [
   { key: 'Staple', fr: 'Riz/Nouilles', zh: '主食' }
 ];
 
+// 簡單安全的 HTML 轉義函數，防止 XSS 注入
+function escapeHtml(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
 // ⏰ 檢查是否在營業時間內（週一至週六 09:00 - 20:00 法國巴黎時間）
 // ⏰ 檢查是否在營業時間內（自動解析你設定的時間範圍）
 function checkIsBusinessOpen() {
@@ -575,7 +586,7 @@ function copyReceiptText() {
   if (!lastOrderDetails) return;
   const o = lastOrderDetails;
   const itemText = o.items.map(i => `- ${i.name_fr} (${i.name_zh}) x${i.qty}`).join('\n');
-  const text = `🧾 【Cici Cuisine 訂單憑證 #${o.orderId}】\n📅 配送時間: ${o.deliverySlot}\n👤 姓名: ${o.name}\n📞 電話: ${o.phone}\n📍 地址: ${o.address}\n\n🍲 訂購餐點:\n${itemText}\n\n💰 總計: ${o.total.toFixed(2)} €`;
+  const text = `🧾 【Cici Cuisine 訂單憑證 #${o.orderId}】\n📅 配送時間: ${o.deliverySlot}\n👤 姓名: ${o.name}\n📞 電話: ${escapeHtml(o.phone)}\n📍 地址: ${o.address}\n\n🍲 訂購餐點:\n${itemText}\n\n💰 總計: ${o.total.toFixed(2)} €`;
 
   navigator.clipboard.writeText(text).then(() => {
     alert('📋 訂單明細已複製到剪貼板！可以直接發給群主微信。');
@@ -960,11 +971,11 @@ function applyOrderFilters() {
 
           <div class="flex items-center gap-1.5">
             ${isCancelled ? `
-              <button type="button" onclick="deleteOrderFromSupabase('${o.id}', '${o.customer_name}')" class="bg-red-100 hover:bg-red-200 text-red-600 text-[10px] px-2 py-1 rounded font-bold transition">
+              <button type="button" onclick="deleteOrderFromSupabase('${o.id}', '${escapeHtml(o.customer_name)}')" class="bg-red-100 hover:bg-red-200 text-red-600 text-[10px] px-2 py-1 rounded font-bold transition">
                 🗑️ 永久刪除
               </button>
             ` : ''}
-            <button type="button" onclick="copyOrderForDriver('${o.customer_name}', '${o.phone}', '${o.total_price}')" class="bg-gray-100 hover:bg-gray-200 text-gray-700 text-[10px] px-2 py-1 rounded font-bold transition">
+            <button type="button" onclick="copyOrderForDriver('${escapeHtml(o.customer_name)}', '${escapeHtml(o.phone)}', '${o.total_price}')" class="bg-gray-100 hover:bg-gray-200 text-gray-700 text-[10px] px-2 py-1 rounded font-bold transition">
               📋 派送小票
             </button>
           </div>
