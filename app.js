@@ -542,6 +542,26 @@ async function submitOrder() {
       submitBtn.innerText = 'Traitement en cours... / 提交中...';
     }
 
+    // 🌟 關鍵修正：在送出訂單前，直接從 Supabase 抓取最新的 WhatsApp 號碼與店鋪名稱，確保完全對應後台！
+    try {
+      const { data: latestSetting } = await supabaseClient
+        .from('store_settings')
+        .select('whatsapp_number, store_name')
+        .eq('id', 1)
+        .single();
+      
+      if (latestSetting) {
+        if (latestSetting.whatsapp_number) {
+          STORE_CONFIG.whatsappNumber = latestSetting.whatsapp_number;
+        }
+        if (latestSetting.store_name) {
+          STORE_CONFIG.storeName = latestSetting.store_name;
+        }
+      }
+    } catch (e) {
+      console.warn("即時同步後台設定失敗，使用現有設定", e);
+    }
+
     const items = Object.keys(cart).map(id => {
       const item = menuData.find(i => i.id === id);
       return { 
@@ -613,6 +633,7 @@ async function submitOrder() {
       total_price: total
     };
     
+    // 這裡會使用剛才同步過、來自後台的最新 WhatsApp 號碼
     const whatsappUrl = generateWhatsAppLink(whatsappOrderData, orderId);
     showWhatsAppModal(whatsappUrl, realDbId, orderId);
 
