@@ -1,5 +1,6 @@
-const SUPABASE_URL = 'https://zcivplddxtaqlefrtajr.supabase.co';
-const SUPABASE_KEY = 'sb_publishable_eQG7FVgOU36Z8edfnrf27w_5A7tlNiq';
+// app.js 開頭改成這樣：
+const SUPABASE_URL = window.STORE_GLOBAL_CONFIG.supabaseUrl;
+const SUPABASE_KEY = window.STORE_GLOBAL_CONFIG.supabaseKey;
 const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 let STORE_CONFIG = {
