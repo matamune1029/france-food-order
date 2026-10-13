@@ -1126,7 +1126,11 @@ async function fetchAdminMenu() {
   if (!container) return;
 
   if (!menuData || menuData.length === 0) {
-    const { data } = await supabaseClient.from('menu_items').select('*');
+    const storeId = window.STORE_GLOBAL_CONFIG.restaurantId; // 👈 補上這行
+    const { data } = await supabaseClient
+      .from('menu_items')
+      .select('*')
+      .eq('restaurant_id', storeId); // 👈 補上過濾當前店鋪
     if (data) menuData = data;
   }
 
@@ -1327,7 +1331,11 @@ async function saveDish() {
     }
   }
 
+  // 🌟 1. 取得當前店鋪 ID
+  const storeId = window.STORE_GLOBAL_CONFIG.restaurantId;
+
   const payload = { 
+    restaurant_id: storeId, // 🌟 2. 確保新增或更新時帶入當前店鋪 ID
     name_fr, 
     name_zh, 
     price, 
@@ -1340,7 +1348,8 @@ async function saveDish() {
 
   let res;
   if (id) {
-    res = await supabaseClient.from('menu_items').update(payload).eq('id', id);
+    // 🌟 3. 更新時多加一層 restaurant_id 限制，確保安全
+    res = await supabaseClient.from('menu_items').update(payload).eq('id', id).eq('restaurant_id', storeId);
   } else {
     res = await supabaseClient.from('menu_items').insert([payload]);
   }
@@ -1572,7 +1581,7 @@ async function saveWhatsAppNumber() {
     const { error } = await supabaseClient
       .from('store_settings')
       .update({ whatsapp_number: newNumber, updated_at: new Date() })
-      .eq('id', 1);
+      .eq('restaurant_id', window.STORE_GLOBAL_CONFIG.restaurantId);
 
     if (error) throw error;
 
@@ -1610,7 +1619,7 @@ async function saveStoreInfo() {
         store_slogan: newSlogan, 
         updated_at: new Date() 
       })
-      .eq('id', 1);
+      .eq('restaurant_id', window.STORE_GLOBAL_CONFIG.restaurantId);
 
     if (error) throw error;
 
@@ -1674,7 +1683,7 @@ async function saveBusinessHoursInfo() {
         allowed_days: selectedDays,
         updated_at: new Date() 
       })
-      .eq('id', 1);
+      .eq('restaurant_id', window.STORE_GLOBAL_CONFIG.restaurantId);
 
     if (error) throw error;
 
