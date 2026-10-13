@@ -528,27 +528,58 @@ async function loadStoreSettings() {
   } catch (err) { console.error(err); }
 }
 
-async function saveAllowedDays() {
+// 🌟 整合版：一次儲存營業時間、營業模式與每週送餐日
+async function saveBusinessHoursInfo() {
+  const hoursInput = document.getElementById('setting-hours-text-input');
+  const modeSelect = document.getElementById('setting-business-mode-select');
+  const manualSelect = document.getElementById('setting-manual-open-select');
+  const statusEl = document.getElementById('business-hours-save-status');
+
+  // 1. 抓取後台勾選的每週送餐日
   const checkboxes = document.querySelectorAll('.day-checkbox:checked');
   const selectedDays = Array.from(checkboxes).map(chk => parseInt(chk.value, 10));
-  const statusEl = document.getElementById('days-save-status');
+
+  if (!hoursInput || !modeSelect || !manualSelect) return;
+
+  const newHoursText = hoursInput.value.trim() || "🕒 13:00 - 10:00 (Lundi - Dimanche)";
+  const newMode = modeSelect.value;
+  const newManualOpen = manualSelect.value === 'true';
 
   try {
+    // 2. 一併更新至 Supabase 的 store_settings 資料表
     const { error } = await supabaseClient
       .from('store_settings')
-      .update({ allowed_days: selectedDays, updated_at: new Date() })
+      .update({ 
+        store_hours_text: newHoursText, 
+        business_mode: newMode, 
+        manual_open: newManualOpen,
+        allowed_days: selectedDays, // 👈 儲存勾選的星期陣列 (例如 [1, 4])
+        updated_at: new Date() 
+      })
       .eq('id', 1);
 
     if (error) throw error;
+
+    // 3. 更新前端記憶體中的設定
+    STORE_CONFIG.storeHoursText = newHoursText;
+    STORE_CONFIG.businessMode = newMode;
+    STORE_CONFIG.manualOpen = newManualOpen;
     STORE_CONFIG.allowedDays = selectedDays;
+
+    // 4. 即時更新畫面上的營業狀態
+    const hoursEl = document.getElementById('store-hours-text');
+    if (hoursEl) hoursEl.innerText = newHoursText;
+
     updateBusinessStatusBar();
 
+    // 5. 顯示成功提示
     if (statusEl) {
-      statusEl.innerText = "✅ 每週送餐日已成功更新！";
+      statusEl.innerText = "✅ 營業與送餐日設定已成功更新！";
       statusEl.className = "text-xs mt-1 text-green-600 font-bold block text-center";
       setTimeout(() => { statusEl.className = "text-xs mt-1 hidden text-center"; }, 3000);
     }
   } catch (err) {
+    console.error("儲存失敗:", err);
     if (statusEl) {
       statusEl.innerText = "❌ 儲存失敗";
       statusEl.className = "text-xs mt-1 text-red-600 font-bold block text-center";
