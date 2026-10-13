@@ -540,10 +540,8 @@ async function submitOrder() {
     const allowedPostalCodes = [
       "34000", // 市中心
       "34070", // 南部
-      "34080", // 西部
       "34090", // 北部 (店鋪所在地)
       "34170", // 緊鄰的 Castelnau-le-Lez
-      "34830"  // 緊鄰的 Clapiers
     ];
 
     const fullTextToCheck = address + " " + note;
