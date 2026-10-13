@@ -72,6 +72,7 @@
   </div>
 
   <!-- 3. 下單彈窗 -->
+ <!-- 3. 下單彈窗 -->
   <div id="checkout-modal" class="hidden fixed inset-0 bg-black/60 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
     <div class="bg-white w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl p-5 space-y-4 max-h-[90vh] overflow-y-auto">
       <div class="flex justify-between items-center border-b pb-3">
@@ -106,6 +107,7 @@
           <label class="block text-xs font-bold text-gray-600 mb-1">Téléphone (FR) / 法國聯繫電話 *</label>
           <input id="cust-phone" type="tel" placeholder="Ex: 06 12 34 56 78" class="w-full border border-gray-300 p-2.5 rounded-lg text-sm focus:outline-none focus:border-green-500">
         </div>
+        
         <!-- 📦 取餐方式選擇（必選） -->
         <div class="mb-3">
           <label class="block text-xs font-bold text-gray-700 mb-1">
@@ -117,30 +119,31 @@
           </select>
         </div>
         
-        <!-- 📍 地址欄位容器（如果是自取會自動隱藏） -->
+        <!-- 📍 地址與郵遞區號容器（如果是自取會自動整組隱藏） -->
         <div id="address-container" class="space-y-3 mb-3">
-          <!-- 1. 郵遞區號必選下拉選單 -->
+          <!-- 1. 必選的 4 個指定郵遞區號下拉選單 -->
           <div>
             <label class="block text-xs font-bold text-gray-700 mb-1">
               Code postal / 配送郵遞區號 <span class="text-red-500">*</span>
             </label>
             <select id="cust-postcode" class="w-full border border-gray-300 p-2.5 rounded-lg text-xs bg-white font-bold text-gray-800 focus:outline-none focus:border-green-500">
               <option value="">-- Sélectionner le code postal / 請選擇郵遞區號 --</option>
+              <option value="34000">34000 - Montpellier Centre (市中心)</option>
+              <option value="34070">34070 - Montpellier Sud (南區)</option>
+              <option value="34080">34080 - Montpellier Ouest (西區)</option>
               <option value="34090">34090 - Montpellier Nord (店鋪所在區)</option>
-              <option value="34000">34000 - Montpellier Centre / 市中心</option>
-              <option value="34070">34070 - Montpellier Sud / 南區</option>
-              <option value="34080">34080 - Montpellier Ouest / 西區</option>
             </select>
           </div>
-        
-          <!-- 2. 詳細地址輸入框（不強制要求顧客在文字裡寫郵編） -->
+
+          <!-- 2. 詳細地址輸入框（保留，不強制要求填寫郵編） -->
           <div>
             <label class="block text-xs font-bold text-gray-700 mb-1">
               Adresse de livraison / 詳細送餐地址 <span class="text-red-500">*</span>
             </label>
-            <input type="text" id="cust-address" placeholder="ex: 10 Rue de la République" class="w-full border border-gray-300 p-2.5 rounded-lg text-xs focus:outline-none focus:border-green-500">
+            <input type="text" id="cust-address" placeholder="ex: 44 Rue du Faubourg Saint-Jaumes" class="w-full border border-gray-300 p-2.5 rounded-lg text-xs focus:outline-none focus:border-green-500">
           </div>
         </div>
+
         <div>
           <label class="block text-xs font-bold text-gray-600 mb-1">Remarques / 備註 (選填)</label>
           <input id="cust-note" type="text" placeholder="Ex: Less spicy / 微辣" class="w-full border border-gray-300 p-2.5 rounded-lg text-sm focus:outline-none focus:border-green-500">
