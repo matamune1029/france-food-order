@@ -550,7 +550,7 @@ async function submitOrder() {
     const hasValidPostalCode = allowedPostalCodes.some(code => fullTextToCheck.includes(code));
 
     if (!hasValidPostalCode) {
-      alert(`❌ Désolé, votre adresse est hors de notre zone de livraison (6km max) !\n\n抱歉，您的地址超出 6 公里配送範圍，或未填寫正確的 5 位數郵遞區號（例如 34090）！`);
+      alert(`❌ Désolé, votre adresse est hors de notre zone de livraison (6 km max) !\n\nVeuillez vérifier que vous avez bien indiqué un code postal valide à 5 chiffres (ex: 34090).\n\n--------------------\n抱歉，您的地址超出 6 公里配送範圍，或未填寫正確的 5 位數郵遞區號（例如 34090）！`);
       return;
     }
 
