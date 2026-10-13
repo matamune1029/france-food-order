@@ -536,6 +536,24 @@ async function submitOrder() {
 
     if (!address) return alert('Veuillez entrer votre adresse de livraison ! / 請填寫送餐地址！');
 
+    // 🛡️ 6公里範圍地址防呆：檢查填寫的地址或備註是否包含蒙佩利爾周邊合法郵遞區號
+    const allowedPostalCodes = [
+      "34000", // 市中心
+      "34070", // 南部
+      "34080", // 西部
+      "34090", // 北部 (店鋪所在地)
+      "34170", // 緊鄰的 Castelnau-le-Lez
+      "34830"  // 緊鄰的 Clapiers
+    ];
+
+    const fullTextToCheck = address + " " + note;
+    const hasValidPostalCode = allowedPostalCodes.some(code => fullTextToCheck.includes(code));
+
+    if (!hasValidPostalCode) {
+      alert(`❌ Désolé, votre adresse est hors de notre zone de livraison (6km max) !\n\n抱歉，您的地址超出 6 公里配送範圍，或未填寫正確的 5 位數郵遞區號（例如 34090）！`);
+      return;
+    }
+
     if (submitBtn) {
       submitBtn.disabled = true;
       submitBtn.classList.add('opacity-50', 'cursor-not-allowed');
