@@ -517,6 +517,7 @@ async function submitOrder() {
   const submitBtn = document.querySelector('#checkout-modal button[onclick="submitOrder()"]');
   
   try {
+    const fulfillmentMode = document.getElementById('cust-fulfillment').value; // delivery 或 pickup
     const dateSelect = document.getElementById('cust-date').value;
     const timeSelect = document.getElementById('cust-time').value;
     const name = document.getElementById('cust-name').value.trim();
@@ -534,22 +535,28 @@ async function submitOrder() {
       return alert('Veuillez entrer un numéro de téléphone français valide (ex: 0612345678) ! / 請填寫有效的法國手機號碼！');
     }
 
-    if (!address) return alert('Veuillez entrer votre adresse de livraison ! / 請填寫送餐地址！');
+    // 🛡️ 只有在選擇「配送」時，才強制檢查地址與 6 公里郵遞區號白名單
+    if (fulfillmentMode === 'delivery') {
+      if (!address || address.includes('到店自取')) {
+        return alert('Veuillez entrer votre adresse de livraison ! / 請填寫送餐地址！');
+      }
 
-    // 🛡️ 6公里範圍地址防呆：檢查填寫的地址或備註是否包含蒙佩利爾周邊合法郵遞區號
-    const allowedPostalCodes = [
-      "34000", // 市中心
-      "34070", // 南部
-      "34090", // 北部 (店鋪所在地)
-      "34170", // 緊鄰的 Castelnau-le-Lez
-    ];
+      const allowedPostalCodes = [
+        "34000", // 市中心
+        "34070", // 南部
+        "34080", // 西部
+        "34090", // 北部 (店鋪所在地)
+        "34170", // Castelnau-le-Lez
+        "34830"  // Clapiers
+      ];
 
-    const fullTextToCheck = address + " " + note;
-    const hasValidPostalCode = allowedPostalCodes.some(code => fullTextToCheck.includes(code));
+      const fullTextToCheck = address + " " + note;
+      const hasValidPostalCode = allowedPostalCodes.some(code => fullTextToCheck.includes(code));
 
-    if (!hasValidPostalCode) {
-      alert(`❌ Désolé, votre adresse est hors de notre zone de livraison (6 km max) !\n\nVeuillez vérifier que vous avez bien indiqué un code postal valide à 5 chiffres (ex: 34090).\n\n--------------------\n抱歉，您的地址超出 6 公里配送範圍，或未填寫正確的 5 位數郵遞區號（例如 34090）！`);
-      return;
+      if (!hasValidPostalCode) {
+        alert(`❌ Désolé, votre adresse est hors de notre zone de livraison (6 km max) !\n\nVeuillez vérifier que vous avez bien indiqué un code postal valide à 5 chiffres (ex: 34090).\n\n--------------------\n抱歉，您的地址超出 6 公里配送範圍，或未填寫正確的 5 位數郵遞區號（例如 34090）！`);
+        return;
+      }
     }
 
     if (submitBtn) {
@@ -558,7 +565,7 @@ async function submitOrder() {
       submitBtn.innerText = 'Traitement en cours... / 提交中...';
     }
 
-    // 🌟 關鍵修正：在送出訂單前，直接從 Supabase 抓取最新的 WhatsApp 號碼與店鋪名稱，確保完全對應後台！
+    // 同步最新的 WhatsApp 號碼與店鋪名稱
     try {
       const { data: latestSetting } = await supabaseClient
         .from('store_settings')
@@ -567,12 +574,8 @@ async function submitOrder() {
         .single();
       
       if (latestSetting) {
-        if (latestSetting.whatsapp_number) {
-          STORE_CONFIG.whatsappNumber = latestSetting.whatsapp_number;
-        }
-        if (latestSetting.store_name) {
-          STORE_CONFIG.storeName = latestSetting.store_name;
-        }
+        if (latestSetting.whatsapp_number) STORE_CONFIG.whatsappNumber = latestSetting.whatsapp_number;
+        if (latestSetting.store_name) STORE_CONFIG.storeName = latestSetting.store_name;
       }
     } catch (e) {
       console.warn("即時同步後台設定失敗，使用現有設定", e);
@@ -594,7 +597,9 @@ async function submitOrder() {
     const deliveryDateISO = resolveDeliveryDate(dateSelect);
     const deliverySlot = `${dateSelect} - ${timeSelect}`;
 
-    const fullContactInfo = `[${deliverySlot}] ${phone} | Adresse: ${address}${note ? ' | Note: ' + note : ''}`;
+    // 判斷聯絡資訊顯示格式（自取 vs 配送）
+    const fulfillmentText = fulfillmentMode === 'pickup' ? '[到店自取 Click & Collect]' : `[配送 Livraison] Adresse: ${address}`;
+    const fullContactInfo = `[${deliverySlot}] ${phone} | ${fulfillmentText}${note ? ' | Note: ' + note : ''}`;
     const dbItems = items.map(i => ({ name: `${i.name_fr} (${i.name_zh})`, qty: i.qty, price: i.price }));
 
     let { data, error } = await supabaseClient.from('orders').insert([
@@ -633,7 +638,7 @@ async function submitOrder() {
       }
     }
 
-    lastOrderDetails = { dbId: realDbId, orderId, deliverySlot, name, phone, address, note, items, total };
+    lastOrderDetails = { dbId: realDbId, orderId, deliverySlot, name, phone, address: fulfillmentMode === 'pickup' ? '到店自取 (Click & Collect)' : address, note, items, total };
     saveOrderToLocal(lastOrderDetails);
 
     cart = {};
@@ -644,12 +649,11 @@ async function submitOrder() {
     const whatsappOrderData = {
       customer_name: name,
       customer_phone: phone,
-      delivery_address: `${address} (${deliverySlot})${note ? ' - 備註: ' + note : ''}`,
+      delivery_address: fulfillmentMode === 'pickup' ? `到店自取 (Click & Collect) (${deliverySlot})${note ? ' - 備註: ' + note : ''}` : `${address} (${deliverySlot})${note ? ' - 備註: ' + note : ''}`,
       items: items.map(i => ({ name: `${i.name_fr} (${i.name_zh})`, quantity: i.qty, price: i.price })),
       total_price: total
     };
     
-    // 這裡會使用剛才同步過、來自後台的最新 WhatsApp 號碼
     const whatsappUrl = generateWhatsAppLink(whatsappOrderData, orderId);
     showWhatsAppModal(whatsappUrl, realDbId, orderId);
 
@@ -1806,6 +1810,25 @@ async function saveAdminPassword() {
     if (statusEl) {
       statusEl.innerText = "❌ 密碼更新失敗";
       statusEl.className = "text-xs mt-1 text-red-600 font-bold block text-center";
+    }
+  }
+}
+
+// 🔄 切換「自取」或「配送」時的畫面連動
+function toggleFulfillmentMode() {
+  const mode = document.getElementById('cust-fulfillment').value;
+  const addressContainer = document.getElementById('address-container');
+  const addressInput = document.getElementById('cust-address');
+
+  if (mode === 'pickup') {
+    // 如果選擇自取：隱藏地址欄位，並清空地址（避免驗證殘留）
+    if (addressContainer) addressContainer.classList.add('hidden');
+    if (addressInput) addressInput.value = '到店自取 (Click & Collect)';
+  } else {
+    // 如果選擇配送：顯示地址欄位，並清空預設文字讓顧客填寫
+    if (addressContainer) addressContainer.classList.remove('hidden');
+    if (addressInput && addressInput.value.includes('到店自取')) {
+      addressInput.value = '';
     }
   }
 }
