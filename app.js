@@ -76,32 +76,18 @@ async function saveBusinessHoursInfo() {
   const manualSelect = document.getElementById('setting-manual-open-select');
   const statusEl = document.getElementById('business-hours-save-status');
 
-  if (!hoursInput || !modeSelect || !manualSelect) return;
-
-  const newHoursText = hoursInput.value.trim() || "🕒 13:00 - 10:00 (Lundi - Dimanche)";
-
-  // 🛡️ 防呆驗證：檢查輸入的時間格式與是否誤設在 10:00 - 13:00 休息時間內
-  const match = newHoursText.match(/(\d{1,2}):(\d{2})\s*-\s*(\d{1,2}):(\d{2})/);
-  if (match) {
-    const startH = parseInt(match[1], 10);
-    const endH = parseInt(match[3], 10);
-    
-    // 如果設定剛好落在 10:00 到 13:00 之間（例如 10:00 - 13:00），這是店鋪休息時間，禁止設定！
-    if (startH >= 10 && startH < 13 && endH > 10 && endH <= 13) {
-      alert("❌ 10:00 - 13:00 為店鋪固定休息與派送時間，不能將營業時間設在這個時段！");
-      return;
-    }
-  }
-
-  // 1. 抓取後台勾選的每週送餐日
+  // 1. 抓取勾選的星期
   const checkboxes = document.querySelectorAll('.day-checkbox:checked');
   const selectedDays = Array.from(checkboxes).map(chk => parseInt(chk.value, 10));
 
+  if (!hoursInput || !modeSelect || !manualSelect) return;
+
+  const newHoursText = hoursInput.value.trim() || "🕒 13:00 - 10:00 (Lundi - Dimanche)";
   const newMode = modeSelect.value;
   const newManualOpen = manualSelect.value === 'true';
 
   try {
-    // 2. 更新至 Supabase 的 store_settings 資料表
+    // 2. 一併寫入 Supabase
     const { error } = await supabaseClient
       .from('store_settings')
       .update({ 
@@ -115,19 +101,16 @@ async function saveBusinessHoursInfo() {
 
     if (error) throw error;
 
-    // 3. 更新前端記憶體中的設定
     STORE_CONFIG.storeHoursText = newHoursText;
     STORE_CONFIG.businessMode = newMode;
     STORE_CONFIG.manualOpen = newManualOpen;
     STORE_CONFIG.allowedDays = selectedDays;
 
-    // 4. 即時更新畫面上的營業狀態
     const hoursEl = document.getElementById('store-hours-text');
     if (hoursEl) hoursEl.innerText = newHoursText;
 
     updateBusinessStatusBar();
 
-    // 5. 顯示成功提示
     if (statusEl) {
       statusEl.innerText = "✅ 營業與送餐日設定已成功更新！";
       statusEl.className = "text-xs mt-1 text-green-600 font-bold block text-center";
