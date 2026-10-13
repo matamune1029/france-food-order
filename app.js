@@ -845,7 +845,7 @@ async function toggleMode(forceCheck = false) {
     fetchOrders();
     initAdminRealtimeListener(); 
   } else {
-    supabaseClient.auth.signOut();
+    // supabaseClient.auth.signOut();
     isAdminLoggedIn = false;
     if (orderChannel) {
       supabaseClient.removeChannel(orderChannel);
