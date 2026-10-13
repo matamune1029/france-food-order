@@ -1750,3 +1750,40 @@ function toggleFulfillmentMode() {
     }
   }
 }
+
+// 📧 透過 Supabase Auth 發送密碼重設郵件給目前登入的管理員
+async function sendPasswordResetEmail() {
+  const statusEl = document.getElementById('reset-password-status');
+  
+  try {
+    // 取得當前已登入的使用者資訊
+    const { data: { user }, error: userError } = await supabaseClient.auth.getUser();
+    
+    if (userError || !user || !user.email) {
+      alert("❌ 無法取得當前登入的管理員信箱，請重新登入後再試！");
+      return;
+    }
+
+    const adminEmail = user.email;
+    
+    // 呼叫 Supabase 官方內建的發送重設密碼郵件 API
+    // 註冊時填寫的網址會作為重設後的跳轉頁面（這裡預設帶入當前網頁網址）
+    const { error } = await supabaseClient.auth.resetPasswordForEmail(adminEmail, {
+      redirectTo: window.location.href.split('?')[0], // 自動對應回目前網站首頁
+    });
+
+    if (error) throw error;
+
+    if (statusEl) {
+      statusEl.innerText = `✅ 重設密碼信件已成功發送至：${adminEmail}，請檢查收件匣！`;
+      statusEl.className = "text-xs mt-2 text-green-600 font-bold block text-center";
+      setTimeout(() => { statusEl.className = "text-xs mt-2 hidden text-center"; }, 6000);
+    }
+  } catch (err) {
+    console.error("發送重設郵件失敗:", err);
+    if (statusEl) {
+      statusEl.innerText = "❌ 發送失敗: " + err.message;
+      statusEl.className = "text-xs mt-2 text-red-600 font-bold block text-center";
+    }
+  }
+}
