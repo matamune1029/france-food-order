@@ -2,14 +2,20 @@ const SUPABASE_URL = 'https://zcivplddxtaqlefrtajr.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_eQG7FVgOU36Z8edfnrf27w_5A7tlNiq';
 const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
+// 原本寫死的：
+// const STORE_CONFIG = {
+//   whatsappNumber: "85292773583", 
+//   storeName: "Cici Cuisine"
+// };
+
+// 改為：
 let STORE_CONFIG = {
   whatsappNumber: "85292773583", 
   storeName: "Cici Cuisine",
   storeSlogan: "🕒 Livraison | 配送",
-  storeHoursText: "🕒 13:00 - 10:00 (Lundi - Dimanche)",
+  storeHoursText: "🕒 12:00 - 14:00 (Lundi - Samedi)",
   businessMode: "auto",
-  manualOpen: true,
-  allowedDays: [1, 4] // 預設週一(1)與週四(4)
+  manualOpen: true
 };
 
 let cart = {};
@@ -29,6 +35,7 @@ const fixedCategories = [
   { key: 'Staple', fr: 'Riz/Nouilles', zh: '主食' }
 ];
 
+// 簡單安全的 HTML 轉義函數，防止 XSS 注入
 function escapeHtml(str) {
   if (!str) return '';
   return String(str)
@@ -39,6 +46,7 @@ function escapeHtml(str) {
     .replace(/'/g, '&#039;');
 }
 
+// 🗓️ 取得巴黎時區的日期字串（YYYY-MM-DD）；offsetDays=0 今天、1 明天
 function getParisDateStr(offsetDays = 0) {
   const todayStr = new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Paris' });
   if (!offsetDays) return todayStr;
@@ -46,13 +54,15 @@ function getParisDateStr(offsetDays = 0) {
   return new Date(Date.UTC(y, m - 1, d + offsetDays)).toISOString().slice(0, 10);
 }
 
+// 依顧客選的配送日（Aujourd'hui / Demain）換算成真正的日期
 function resolveDeliveryDate(dateSelect) {
   const isTomorrow = /demain|明天/i.test(dateSelect || '');
   return getParisDateStr(isTomorrow ? 1 : 0);
 }
 
+// 🧾 產生訂單編號：CC-YYMMDD-XXXX（巴黎日期 + 4 位隨機碼，避開 0/O/1/I 等易混淆字元）
 function generateOrderCode() {
-  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // 32 個字元
   const bytes = new Uint8Array(4);
   crypto.getRandomValues(bytes);
   let rand = '';
@@ -61,8 +71,10 @@ function generateOrderCode() {
   return `CC-${yymmdd}-${rand}`;
 }
 
-// ⏰ 檢查是否在營業時間內 (13:00 - 次日 10:00；10:00 - 13:00 為休息)
+// ⏰ 檢查是否在營業時間內（週一至週六 09:00 - 20:00 法國巴黎時間）
+// ⏰ 檢查是否在營業時間內（自動解析你設定的時間範圍）
 function checkIsBusinessOpen() {
+  // 如果設定為手動模式，直接回傳手動開關狀態
   if (STORE_CONFIG.businessMode === 'manual') {
     return STORE_CONFIG.manualOpen;
   }
@@ -77,85 +89,47 @@ function checkIsBusinessOpen() {
     });
     
     const parts = formatter.formatToParts(now);
-    let weekdayStr = '';
+    let weekday = '';
     let hour = 0;
     let minute = 0;
 
     parts.forEach(p => {
-      if (p.type === 'weekday') weekdayStr = p.value;
+      if (p.type === 'weekday') weekday = p.value;
       if (p.type === 'hour') hour = parseInt(p.value, 10);
       if (p.type === 'minute') minute = parseInt(p.value, 10);
     });
 
-    // 轉換星期格式對應 JS getDay() (Sun=0, Mon=1 ... Sat=6)
-    const weekdayMap = { 'Sun': 0, 'Mon': 1, 'Tue': 2, 'Wed': 3, 'Thu': 4, 'Fri': 5, 'Sat': 6 };
-    const currentDayNum = weekdayMap[weekdayStr] ?? 1;
+    if (weekday === 'Sun') return false;
 
-    // 檢查今天是否在群主設定的允許送餐日中
-    if (Array.isArray(STORE_CONFIG.allowedDays) && STORE_CONFIG.allowedDays.length > 0) {
-      if (!STORE_CONFIG.allowedDays.includes(currentDayNum)) {
-        return false; // 不在允許的星期內
-      }
+    // 預設時間範圍（以防萬一）
+    let openMinutes = 12 * 60;   
+    let closeMinutes = 15 * 60; 
+
+    // 🌟 自動從你輸入的「營業時間標語」中抓取時間（例如 12:00 - 15:00）
+    const text = STORE_CONFIG.storeHoursText || "";
+    const match = text.match(/(\d{1,2}):(\d{2})\s*-\s*(\d{1,2}):(\d{2})/);
+    if (match) {
+      openMinutes = parseInt(match[1], 10) * 60 + parseInt(match[2], 10);
+      closeMinutes = parseInt(match[3], 10) * 60 + parseInt(match[4], 10);
     }
 
     const totalMinutes = hour * 60 + minute;
-    // 營業時間：13:00 (780分) 至 次日 10:00 (600分)
-    // 也就是大於等於 780 分鐘，或是小於 600 分鐘
-    const isOpen = (totalMinutes >= 780 || totalMinutes < 600);
-    return isOpen;
+    return totalMinutes >= openMinutes && totalMinutes <= closeMinutes;
   } catch (e) {
     console.error('Time check error:', e);
     return true; 
   }
 }
 
-// 🗓️ 根據當前時間自動鎖定下單的日期選項（13:00-凌晨只能選明天，凌晨-10:00只能選今天）
-function updateCheckoutDateOptions() {
-  const dateSelect = document.getElementById('cust-date');
-  if (!dateSelect) return;
-
-  try {
-    const now = new Date();
-    const formatter = new Intl.DateTimeFormat('en-US', {
-      timeZone: 'Europe/Paris',
-      hour: 'numeric',
-      minute: 'numeric',
-      hour12: false
-    });
-    let hour = 0;
-    formatter.formatToParts(now).forEach(p => {
-      if (p.type === 'hour') hour = parseInt(p.value, 10);
-    });
-
-    // 清空並重新組合選項
-    dateSelect.innerHTML = '<option value="">-- Choisir le jour / 請選擇日期 --</option>';
-
-    if (hour >= 13) {
-      // 13:00 到 23:59：只能選明天
-      dateSelect.innerHTML += `<option value="Demain (明天)">Demain / 明天 (${getParisDateStr(1)})</option>`;
-      dateSelect.value = "Demain (明天)";
-    } else if (hour < 10) {
-      // 00:00 到 10:00：只能選今天
-      dateSelect.innerHTML += `<option value="Aujourd'hui (當天)">Aujourd'hui / 當天 (${getParisDateStr(0)})</option>`;
-      dateSelect.value = "Aujourd'hui (當天)";
-    } else {
-      // 10:00 到 13:00 休息時間（雖然擋下單，但保留選項防萬一）
-      dateSelect.innerHTML += `
-        <option value="Aujourd'hui (當天)">Aujourd'hui / 當天</option>
-        <option value="Demain (明天)">Demain / 明天</option>
-      `;
-    }
-  } catch (e) {
-    console.error('Update date options error:', e);
-  }
-}
-
+// 🌐 更新網頁頂部狀態與結算按鈕狀態
+// 🌐 更新網頁頂部狀態與結算按鈕狀態
 function updateBusinessStatusBar() {
   const banner = document.getElementById('business-status-banner');
   const checkoutBtn = document.getElementById('checkout-btn');
   const isOpen = checkIsBusinessOpen();
 
-  const hoursText = STORE_CONFIG.storeHoursText || "🕒 13:00 - 10:00";
+  // 取得目前設定的營業時間文字（若無則給預設值）
+  const hoursText = STORE_CONFIG.storeHoursText || "🕒 12:00 - 14:00 (Lundi - Samedi)";
 
   if (banner) {
     if (isOpen) {
@@ -163,10 +137,11 @@ function updateBusinessStatusBar() {
       banner.innerHTML = `🟢 營業中 (Ouvert) — ${hoursText}`;
     } else {
       banner.className = "bg-red-500 text-white text-center py-1.5 px-4 text-xs font-bold transition-all shadow-sm";
-      banner.innerHTML = `🔴 非營業時間/休息中 (Fermé) — ${hoursText}`;
+      banner.innerHTML = `🔴 非營業時間 (Fermé) — ${hoursText}，暫不接受下單`;
     }
   }
 
+  // 🌟 自動切換結算按鈕的樣式與可用性
   if (checkoutBtn) {
     if (isOpen) {
       checkoutBtn.disabled = false;
@@ -180,10 +155,12 @@ function updateBusinessStatusBar() {
   }
 }
 
+// 🔊 鈴聲 1：顧客下單成功提示音
 function playOrderSuccessSound() {
   try {
     const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     const now = audioCtx.currentTime;
+
     const osc1 = audioCtx.createOscillator();
     const gain1 = audioCtx.createGain();
     osc1.type = 'sine';
@@ -194,73 +171,114 @@ function playOrderSuccessSound() {
     gain1.connect(audioCtx.destination);
     osc1.start(now);
     osc1.stop(now + 0.2);
-  } catch (e) { console.log(e); }
+
+    const osc2 = audioCtx.createOscillator();
+    const gain2 = audioCtx.createGain();
+    osc2.type = 'sine';
+    osc2.frequency.setValueAtTime(880, now + 0.15); 
+    gain2.gain.setValueAtTime(0.3, now + 0.15);
+    gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
+    osc2.connect(gain2);
+    gain2.connect(audioCtx.destination);
+    osc2.start(now + 0.15);
+    osc2.stop(now + 0.4);
+  } catch (e) {
+    console.log('Audio error:', e);
+  }
 }
 
+// 🔊 鈴聲 2：點擊 WhatsApp 提示音
 function playWhatsappClickSound() {
   try {
     const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     const now = audioCtx.currentTime;
+
     const osc = audioCtx.createOscillator();
     const gain = audioCtx.createGain();
     osc.type = 'triangle';
     osc.frequency.setValueAtTime(440, now); 
     osc.frequency.exponentialRampToValueAtTime(659.25, now + 0.15); 
+    
     gain.gain.setValueAtTime(0.3, now);
     gain.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
+    
     osc.connect(gain);
     gain.connect(audioCtx.destination);
     osc.start(now);
     osc.stop(now + 0.25);
-  } catch (e) { console.log(e); }
+  } catch (e) {
+    console.log('Audio error:', e);
+  }
 }
 
+// 🔊 鈴聲 3：後台專屬「新訂單急促提醒鈴聲」
 function playAdminNewOrderSound() {
   try {
     const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     const now = audioCtx.currentTime;
+
     [0, 0.15, 0.3].forEach((delay, index) => {
       const osc = audioCtx.createOscillator();
       const gain = audioCtx.createGain();
       osc.type = 'square';
       osc.frequency.setValueAtTime(index === 2 ? 1046.5 : 783.99, now + delay); 
+      
       gain.gain.setValueAtTime(0.2, now + delay);
       gain.gain.exponentialRampToValueAtTime(0.001, now + delay + 0.12);
+      
       osc.connect(gain);
       gain.connect(audioCtx.destination);
       osc.start(now + delay);
       osc.stop(now + delay + 0.12);
     });
-  } catch (e) { console.log(e); }
+  } catch (e) {
+    console.log('Admin Audio error:', e);
+  }
 }
 
 function normalizeCategory(rawCat, nameZh = '', nameFr = '') {
   const cat = (rawCat || '').toString().toLowerCase().trim();
   const zh = (nameZh || '').toString().toLowerCase();
-  if (cat.includes('特色') || cat.includes('spécialité') || cat.includes('specialite')) return 'Specialite';
-  if (cat.includes('海鮮') || cat.includes('魚') || cat.includes('poisson') || zh.includes('魚')) return 'Seafood';
-  if (cat.includes('牛肉') || cat.includes('bœuf') || cat.includes('beef') || zh.includes('牛')) return 'Beef';
-  if (cat.includes('素') || cat.includes('légume')) return 'Legumes';
-  if (cat.includes('主食') || cat.includes('riz') || cat.includes('nouille')) return 'Staple';
+  const fr = (nameFr || '').toString().toLowerCase();
+
+  if (cat.includes('特色') || cat.includes('每日') || cat.includes('spécialité') || cat.includes('specialite') || cat.includes('special')) {
+    return 'Specialite';
+  }
+  if (cat.includes('海鮮') || cat.includes('海鲜') || cat.includes('魚') || cat.includes('鱼') || cat.includes('蝦') || cat.includes('虾') || 
+      cat.includes('poisson') || cat.includes('crevette') || cat.includes('mer') || zh.includes('魚') || zh.includes('鱼') || zh.includes('蝦')) {
+    return 'Seafood';
+  }
+  if (cat.includes('牛肉') || cat.includes('牛') || cat.includes('bœuf') || cat.includes('boeuf') || cat.includes('beef') || zh.includes('牛')) {
+    return 'Beef';
+  }
+  if (cat.includes('素') || cat.includes('légume') || cat.includes('legume')) {
+    return 'Legumes';
+  }
+  if (cat.includes('主食') || cat.includes('riz') || cat.includes('nouille') || cat.includes('rice') || cat.includes('noodle')) {
+    return 'Staple';
+  }
   return 'Viandes';
 }
 
 async function fetchMenu() {
   try {
     const { data, error } = await supabaseClient.from('menu_items').select('*');
-    if (error) console.error(error);
+    if (error) console.error('Menu Fetch Error:', error);
     menuData = data || [];
     renderCategoryBar();
     renderMenu();
   } catch (err) {
-    console.error(err);
+    console.error('Fetch Menu Failure:', err);
+    const container = document.getElementById('menu-container');
+    if (container) container.innerHTML = '<div class="text-center text-red-500 py-10">Erreur de chargement / 菜單載入失敗</div>';
   }
 }
 
 function renderCategoryBar() {
-  const container = document.getElementById('category-bar');
-  if (!container) return;
-  container.innerHTML = fixedCategories.map(cat => {
+  const categoryContainer = document.getElementById('category-bar');
+  if (!categoryContainer) return;
+
+  categoryContainer.innerHTML = fixedCategories.map(cat => {
     const isSelected = currentCategory === cat.key;
     return `
       <button type="button" onclick="switchCategory('${cat.key}')" 
@@ -282,14 +300,20 @@ function renderMenu() {
   const container = document.getElementById('menu-container');
   if (!container) return;
 
-  let listToDisplay = menuData.filter(i => normalizeCategory(i.category, i.name_zh, i.name_fr) === currentCategory);
+  let listToDisplay = menuData.filter(i => {
+    return normalizeCategory(i.category, i.name_zh, i.name_fr) === currentCategory;
+  });
 
   listToDisplay.sort((a, b) => {
     const stockA = (a && typeof a.stock === 'number') ? a.stock : 99;
     const stockB = (b && typeof b.stock === 'number') ? b.stock : 99;
+
     const availA = (a.is_available !== false && stockA > 0) ? 1 : 0;
     const availB = (b.is_available !== false && stockB > 0) ? 1 : 0;
-    if (availA !== availB) return availB - availA;
+
+    if (availA !== availB) {
+      return availB - availA;
+    }
     return (a.sort_order || 99) - (b.sort_order || 99);
   });
 
@@ -301,33 +325,42 @@ function renderMenu() {
   container.innerHTML = listToDisplay.map(item => {
     const maxStock = (item && typeof item.stock === 'number') ? item.stock : 99;
     const currentCartQty = cart[item.id] || 0;
+
     const isAvailable = (item.is_available !== false) && (maxStock > 0);
     const isMaxReached = currentCartQty >= maxStock;
 
     const imgHtml = item.image_url 
-      ? `<img src="${escapeHtml(item.image_url)}" class="w-16 h-16 rounded-lg object-cover flex-shrink-0">`
+      ? `<img src="${escapeHtml(item.image_url)}" class="w-16 h-16 rounded-lg object-cover flex-shrink-0" alt="${escapeHtml(item.name_zh)}">`
       : `<div class="w-16 h-16 rounded-lg bg-orange-50 border border-orange-100 flex items-center justify-center text-orange-400 font-bold text-xs flex-shrink-0">🍲</div>`;
 
     return `
       <div class="bg-white p-3 rounded-xl shadow-sm flex items-center gap-3 border border-gray-100 ${!isAvailable ? 'opacity-50 grayscale' : ''}">
-        <div onclick="openDishDetailModal('${item.id}')" class="cursor-pointer flex-shrink-0">${imgHtml}</div>
+        <div onclick="openDishDetailModal('${item.id}')" class="cursor-pointer flex-shrink-0">
+          ${imgHtml}
+        </div>
+        
         <div class="flex-1 min-w-0">
-          <div onclick="openDishDetailModal('${item.id}')" class="font-bold text-gray-800 text-xs sm:text-sm leading-tight line-clamp-2 cursor-pointer hover:text-green-600 transition">
-            ${escapeHtml(item.name_fr)} ${!isAvailable ? '<span class="ml-1 text-[10px] bg-gray-200 text-gray-600 px-1 py-0.5 rounded">Épuisé</span>' : ''}
+          <div onclick="openDishDetailModal('${item.id}')" class="font-bold text-gray-800 text-xs sm:text-sm leading-tight line-clamp-2 break-words cursor-pointer hover:text-green-600 transition">
+            ${escapeHtml(item.name_fr)}
+            ${!isAvailable ? '<span class="ml-1 text-[10px] bg-gray-200 text-gray-600 px-1 py-0.5 rounded font-normal inline-block">Épuisé</span>' : ''}
           </div>
           <div class="text-xs text-gray-500 font-normal mt-0.5 truncate">${escapeHtml(item.name_zh)}</div>
           <div class="flex items-center gap-2 mt-1">
             <span class="text-green-600 font-extrabold text-base">${item.price || 0} €</span>
-            ${isAvailable ? `<span class="text-[10px] text-orange-600 bg-orange-50 px-1.5 py-0.5 rounded border">Stock: ${maxStock}</span>` : ''}
+            ${isAvailable ? `<span class="text-[10px] text-orange-600 bg-orange-50 px-1.5 py-0.5 rounded border border-orange-100">Stock: ${maxStock}</span>` : ''}
           </div>
         </div>
+        
         <div class="flex items-center gap-1.5 flex-shrink-0">
           ${currentCartQty > 0 ? `
-            <button type="button" onclick="updateCart('${item.id}', -1)" class="w-7 h-7 bg-gray-100 text-gray-700 rounded-full font-bold flex items-center justify-center">-</button>
+            <button type="button" onclick="updateCart('${item.id}', -1)" class="w-7 h-7 bg-gray-100 text-gray-700 rounded-full font-bold flex items-center justify-center active:scale-90">-</button>
             <span class="text-sm font-bold w-4 text-center">${currentCartQty}</span>
           ` : ''}
-          <button type="button" ${(!isAvailable || isMaxReached) ? 'disabled' : `onclick="updateCart('${item.id}', 1)"`} 
-            class="w-7 h-7 ${isAvailable && !isMaxReached ? 'bg-green-500 text-white shadow-md' : 'bg-gray-300 text-gray-500 cursor-not-allowed'} rounded-full font-bold flex items-center justify-center">+</button>
+          <button type="button" 
+            ${(!isAvailable || isMaxReached) ? 'disabled' : `onclick="updateCart('${item.id}', 1)"`} 
+            class="w-7 h-7 ${isAvailable && !isMaxReached ? 'bg-green-500 text-white shadow-md active:scale-90' : 'bg-gray-300 text-gray-500 cursor-not-allowed'} rounded-full font-bold flex items-center justify-center">
+            +
+          </button>
         </div>
       </div>
     `;
@@ -337,16 +370,19 @@ function renderMenu() {
 function updateCart(id, delta) {
   const item = menuData.find(i => i.id === id);
   const maxStock = (item && typeof item.stock === 'number') ? item.stock : 99;
+
   const currentQty = cart[id] || 0;
   if (delta > 0 && currentQty >= maxStock) {
-    alert(`Stock insuffisant ! Il ne reste que ${maxStock} portion(s). / 庫存不足！`);
+    alert(`Stock insuffisant ! Il ne reste que ${maxStock} portion(s). / 庫存不足，該菜品僅剩 ${maxStock} 份！`);
     return;
   }
+
   cart[id] = currentQty + delta;
   if (cart[id] <= 0) delete cart[id];
   renderMenu();
 
-  let total = 0, count = 0;
+  let total = 0;
+  let count = 0;
   for (let itemId in cart) {
     const menuItem = menuData.find(i => i.id === itemId);
     if (menuItem) {
@@ -354,11 +390,17 @@ function updateCart(id, delta) {
       count += cart[itemId];
     }
   }
+
   document.getElementById('total-price').innerText = total.toFixed(2);
   document.getElementById('modal-total-price').innerText = total.toFixed(2);
+  
   const badge = document.getElementById('cart-badge');
-  if (count > 0) { badge.innerText = count; badge.classList.remove('hidden'); }
-  else { badge.classList.add('hidden'); }
+  if (count > 0) {
+    badge.innerText = count;
+    badge.classList.remove('hidden');
+  } else {
+    badge.classList.add('hidden');
+  }
 }
 
 function openCheckoutModal() {
@@ -367,9 +409,6 @@ function openCheckoutModal() {
     return;
   }
   if (Object.keys(cart).length === 0) return alert('Votre panier est vide ! / 購物車是空的！');
-  
-  // 🌟 開啟時自動根據時間鎖定配送日期選項
-  updateCheckoutDateOptions();
   document.getElementById('checkout-modal').classList.remove('hidden');
 }
 
@@ -380,20 +419,26 @@ function closeCheckoutModal() {
 function saveOrderToLocal(order) {
   try {
     let history = JSON.parse(localStorage.getItem('cici_order_history') || '[]');
-    history.unshift({ ...order, createdAt: new Date().toLocaleString() });
+    history.unshift({
+      ...order,
+      createdAt: new Date().toLocaleString()
+    });
     if (history.length > 20) history = history.slice(0, 20);
     localStorage.setItem('cici_order_history', JSON.stringify(history));
-  } catch (e) { console.error(e); }
+  } catch (e) {
+    console.error('Save local order error:', e);
+  }
 }
 
 async function submitOrder() {
   if (!checkIsBusinessOpen()) {
-    alert(`❌ Désolé, nous sommes actuellement fermés !`);
+    alert(`❌ Désolé, nous sommes actuellement fermés !\n抱歉，目前為非營業時間（${STORE_CONFIG.storeHoursText}），暫不接受下單！`);
     closeCheckoutModal();
     return;
   }
 
   const submitBtn = document.querySelector('#checkout-modal button[onclick="submitOrder()"]');
+  
   try {
     const dateSelect = document.getElementById('cust-date').value;
     const timeSelect = document.getElementById('cust-time').value;
@@ -408,23 +453,35 @@ async function submitOrder() {
 
     const cleanPhone = phone.replace(/[\s\.\-\(\)]/g, '');
     const frPhoneRegex = /^(?:(?:\+33|0033)[1-9]|0[1-9])\d{8}$/;
-    if (!frPhoneRegex.test(cleanPhone)) return alert('Veuillez entrer un numéro de téléphone français valide ! / 請填寫有效的法國手機號碼！');
+    if (!frPhoneRegex.test(cleanPhone)) {
+      return alert('Veuillez entrer un numéro de téléphone français valide (ex: 0612345678) ! / 請填寫有效的法國手機號碼！');
+    }
+
     if (!address) return alert('Veuillez entrer votre adresse de livraison ! / 請填寫送餐地址！');
 
     if (submitBtn) {
       submitBtn.disabled = true;
-      submitBtn.innerText = 'Traitement... / 提交中...';
+      submitBtn.classList.add('opacity-50', 'cursor-not-allowed');
+      submitBtn.innerText = 'Traitement en cours... / 提交中...';
     }
 
     const items = Object.keys(cart).map(id => {
       const item = menuData.find(i => i.id === id);
-      return { id, name_fr: item ? item.name_fr : 'Plat', name_zh: item ? item.name_zh : '菜品', qty: cart[id], price: item ? item.price : 0 };
+      return { 
+        id,
+        name_fr: item ? item.name_fr : 'Plat', 
+        name_zh: item ? item.name_zh : '菜品', 
+        qty: cart[id], 
+        price: item ? item.price : 0 
+      };
     });
     
     const total = parseFloat(document.getElementById('total-price').innerText);
+    // 訂單編號（巴黎日期 + 4 位隨機碼，例如 CC-261013-A3K9），同時寫入資料庫 order_code 欄位
     const orderId = generateOrderCode();
     const deliveryDateISO = resolveDeliveryDate(dateSelect);
     const deliverySlot = `${dateSelect} - ${timeSelect}`;
+
     const fullContactInfo = `[${deliverySlot}] ${phone} | Adresse: ${address}${note ? ' | Note: ' + note : ''}`;
     const dbItems = items.map(i => ({ name: `${i.name_fr} (${i.name_zh})`, qty: i.qty, price: i.price }));
 
@@ -432,20 +489,36 @@ async function submitOrder() {
       { customer_name: name, phone: fullContactInfo, items: dbItems, total_price: total, status: 'pending', order_code: orderId, delivery_date: deliveryDateISO }
     ]).select();
 
+    // 若資料庫還沒新增 order_code / delivery_date 欄位，退回舊格式寫入，避免整個下單流程失敗
+    if (error && /order_code|delivery_date/.test(error.message || '')) {
+      console.warn('orders 表缺少 order_code / delivery_date 欄位，已改用舊格式寫入，請在 Supabase 執行 SQL 新增欄位。');
+      ({ data, error } = await supabaseClient.from('orders').insert([
+        { customer_name: name, phone: fullContactInfo, items: dbItems, total_price: total, status: 'pending' }
+      ]).select());
+    }
+
     if (error) {
-      alert('Échec: ' + error.message);
+      console.error('Supabase Error:', error);
+      alert('Échec / 數據庫寫入錯誤: ' + error.message);
       return;
     }
 
     const realDbId = data[0].id;
+
     for (let cartItem of items) {
       const targetDish = menuData.find(m => m.id === cartItem.id);
       if (targetDish) {
-        const currentStock = targetDish.stock ?? 99;
+        const currentStock = (typeof targetDish.stock === 'number') ? targetDish.stock : 99;
         const newStock = Math.max(0, currentStock - cartItem.qty);
-        await supabaseClient.from('menu_items').update({ stock: newStock, is_available: newStock > 0 }).eq('id', cartItem.id);
+        const newAvailable = newStock > 0 ? (targetDish.is_available !== false) : false;
+
+        await supabaseClient
+          .from('menu_items')
+          .update({ stock: newStock, is_available: newAvailable })
+          .eq('id', cartItem.id);
+
         targetDish.stock = newStock;
-        targetDish.is_available = newStock > 0;
+        targetDish.is_available = newAvailable;
       }
     }
 
@@ -454,127 +527,1063 @@ async function submitOrder() {
 
     cart = {};
     closeCheckoutModal();
+
     playOrderSuccessSound();
 
     const whatsappOrderData = {
-      customer_name: name, customer_phone: phone,
+      customer_name: name,
+      customer_phone: phone,
       delivery_address: `${address} (${deliverySlot})${note ? ' - 備註: ' + note : ''}`,
       items: items.map(i => ({ name: `${i.name_fr} (${i.name_zh})`, quantity: i.qty, price: i.price })),
       total_price: total
     };
-    showWhatsAppModal(generateWhatsAppLink(whatsappOrderData, orderId), realDbId, orderId);
+    
+    const whatsappUrl = generateWhatsAppLink(whatsappOrderData, orderId);
+    showWhatsAppModal(whatsappUrl, realDbId, orderId);
 
   } catch (err) {
-    alert('Erreur: ' + err.message);
+    console.error('Submission Error:', err);
+    alert('Erreur / 提交過程發生錯誤: ' + err.message);
   } finally {
     if (submitBtn) {
       submitBtn.disabled = false;
+      submitBtn.classList.remove('opacity-50', 'cursor-not-allowed');
       submitBtn.innerText = 'Confirmer / 提交訂單';
     }
   }
 }
 
-// 相關彈窗與後台管理函式保持原樣並整合：
+function showReceiptModal(order) {
+  document.getElementById('receipt-id').innerText = '#' + order.orderId;
+  document.getElementById('receipt-slot').innerText = order.deliverySlot;
+  document.getElementById('receipt-name').innerText = order.name;
+  document.getElementById('receipt-phone').innerText = order.phone;
+  document.getElementById('receipt-address').innerText = order.address;
+  document.getElementById('receipt-total').innerText = order.total.toFixed(2);
+
+  const itemsContainer = document.getElementById('receipt-items');
+  itemsContainer.innerHTML = order.items.map(i => `
+    <li class="flex justify-between">
+      <span>${escapeHtml(i.name_fr)} (${escapeHtml(i.name_zh)}) x${escapeHtml(i.qty)}</span>
+      <span class="font-bold">${(i.price * i.qty).toFixed(2)} €</span>
+    </li>
+  `).join('');
+
+  document.getElementById('receipt-modal').classList.remove('hidden');
+}
+
+async function downloadReceiptAsImage() {
+  const receiptCard = document.getElementById('receipt-card');
+  if (!receiptCard) return;
+
+  try {
+    const canvas = await html2canvas(receiptCard, {
+      scale: 2,
+      backgroundColor: '#f9fafb'
+    });
+
+    const imageDataUrl = canvas.toDataURL('image/png');
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+
+    if (isIOS) {
+      showImagePreviewOverlay(imageDataUrl);
+    } else {
+      const link = document.createElement('a');
+      link.href = imageDataUrl;
+      link.download = `Receipt_${lastOrderDetails ? lastOrderDetails.orderId : 'CC-0001'}.png`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+  } catch (err) {
+    console.error('Generate image error:', err);
+    alert('圖片生成失敗，請手動截圖保存！');
+  }
+}
+
+function showImagePreviewOverlay(imgUrl) {
+  const overlay = document.createElement('div');
+  overlay.className = 'fixed inset-0 bg-black/80 z-[60] flex flex-col items-center justify-center p-4 animate-fade-in';
+  overlay.innerHTML = `
+    <div class="text-white text-center mb-3 space-y-1">
+      <div class="text-sm font-bold">📸 請 App/手機 內「長按圖片」保存至相冊</div>
+      <div class="text-xs opacity-75">Appuyez longuement pour enregistrer l'image</div>
+    </div>
+    <img src="${imgUrl}" class="max-w-full max-h-[70vh] rounded-xl shadow-2xl border border-white/20 object-contain">
+    <button type="button" onclick="this.parentElement.remove()" class="mt-4 bg-white/20 hover:bg-white/30 text-white text-xs font-bold px-6 py-2 rounded-full border border-white/40">
+      Fermer / 關閉
+    </button>
+  `;
+  document.body.appendChild(overlay);
+}
+
+function copyReceiptText() {
+  if (!lastOrderDetails) return;
+  const o = lastOrderDetails;
+  const itemText = o.items.map(i => `- ${i.name_fr} (${i.name_zh}) x${i.qty}`).join('\n');
+  const text = `🧾 【Cici Cuisine 訂單憑證 #${o.orderId}】\n📅 配送時間: ${o.deliverySlot}\n👤 姓名: ${o.name}\n📞 電話: ${o.phone}\n📍 地址: ${o.address}\n\n🍲 訂購餐點:\n${itemText}\n\n💰 總計: ${o.total.toFixed(2)} €`;
+
+  navigator.clipboard.writeText(text).then(() => {
+    alert('📋 訂單明細已複製到剪貼板！可以直接發給群主微信。');
+  }).catch(() => {
+    alert('複製失敗，請直接截圖保存。');
+  });
+}
+
+function closeReceiptModal() {
+  document.getElementById('receipt-modal').classList.add('hidden');
+  renderMenu();
+}
+
+function openHistoryModal() {
+  const modal = document.getElementById('history-modal');
+  const container = document.getElementById('history-list');
+  if (!modal || !container) return;
+
+  let history = [];
+  try {
+    history = JSON.parse(localStorage.getItem('cici_order_history') || '[]');
+  } catch (e) {
+    history = [];
+  }
+
+  if (history.length === 0) {
+    container.innerHTML = '<div class="text-center text-gray-400 py-8 text-xs">Aucune commande récente / 尚無歷史訂單紀錄</div>';
+  } else {
+    container.innerHTML = history.map((o, index) => {
+      const itemsText = o.items ? o.items.map(i => `${i.name_fr} x${i.qty}`).join(', ') : '';
+      
+      const whatsappOrderData = {
+        customer_name: o.name,
+        customer_phone: o.phone,
+        delivery_address: `${o.address} (${o.deliverySlot})${o.note ? ' - 備註: ' + o.note : ''}`,
+        items: o.items ? o.items.map(i => ({ name: `${i.name_fr} (${i.name_zh})`, quantity: i.qty, price: i.price })) : [],
+        total_price: o.total
+      };
+      const whatsappUrl = generateWhatsAppLink(whatsappOrderData, o.orderId);
+      const targetDbId = o.dbId || '';
+
+      return `
+        <div class="bg-gray-50 p-3.5 rounded-xl border border-gray-200 text-xs space-y-2 shadow-sm">
+          <div class="flex justify-between items-center font-bold text-gray-800 border-b pb-1">
+            <span class="text-green-600">#${escapeHtml(o.orderId)}</span>
+            <span class="text-gray-400 text-[10px] font-normal">${o.createdAt || ''}</span>
+          </div>
+          <div class="text-gray-600">📅 <strong>配送:</strong> ${escapeHtml(o.deliverySlot)}</div>
+          <div class="text-gray-600 truncate">🍲 <strong>明細:</strong> ${escapeHtml(itemsText)}</div>
+          <div class="flex justify-between items-center pt-1 font-bold border-t border-gray-100">
+            <span class="text-gray-500">總計: <span class="text-green-600 text-sm">${(o.total || 0).toFixed(2)} €</span></span>
+            
+            <a href="${escapeHtml(whatsappUrl)}" target="_blank" onclick="markWhatsappClicked('${escapeHtml(targetDbId)}')"
+               class="bg-green-500 hover:bg-green-600 text-white px-3 py-1.5 rounded-lg font-bold flex items-center space-x-1 shadow-sm transition text-[11px]">
+              <span>📱 傳送 WhatsApp</span>
+            </a>
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  modal.classList.remove('hidden');
+}
+
+function closeHistoryModal() {
+  const modal = document.getElementById('history-modal');
+  if (modal) modal.classList.add('hidden');
+}
+
+let secretClickCount = 0;
+let secretClickTimer = null;
+
+function handleSecretClick() {
+  secretClickCount++;
+  clearTimeout(secretClickTimer);
+  secretClickTimer = setTimeout(() => { secretClickCount = 0; }, 3000);
+
+  if (secretClickCount >= 5) {
+    secretClickCount = 0;
+    const btn = document.getElementById('admin-btn');
+    if (btn) btn.classList.remove('hidden');
+    toggleMode(true);
+  }
+}
+
+let isAdminLoggedIn = false;
+
+async function toggleMode(forceCheck = false) {
+  const adminView = document.getElementById('admin-view');
+  const customerView = document.getElementById('customer-view');
+
+  // 如果目前是準備進入後台，且尚未登入
+  if ((adminView.classList.contains('hidden') || forceCheck) && !isAdminLoggedIn) {
+    const password = prompt("🔐 Mot de passe Admin / 請輸入群主管理密碼：");
+    if (!password) return; // 使用者按取消
+
+    try {
+      // 每次都強制從 Supabase 資料庫撈取最新的密碼（不使用快取）
+      const { data, error } = await supabaseClient
+        .from('store_settings')
+        .select('admin_password')
+        .eq('id', 1)
+        .single();
+
+      if (error) {
+        console.error("讀取密碼錯誤:", error);
+      }
+
+      // 優先使用資料庫中的密碼，若無則預設為 "8888"
+      const correctPassword = (data && data.admin_password) ? data.admin_password : "8888";
+
+      if (password !== correctPassword) {
+        return alert("❌ Mot de passe incorrect / 密碼錯誤！");
+      }
+    } catch (err) {
+      console.error("驗證密碼異常:", err);
+      if (password !== "8888") {
+        return alert("❌ Mot de passe incorrect / 密碼錯誤！");
+      }
+    }
+
+    isAdminLoggedIn = true;
+  }
+
+  // 切換畫面顯示
+  adminView.classList.toggle('hidden');
+  customerView.classList.toggle('hidden');
+
+  if (!adminView.classList.contains('hidden')) {
+    // 進入後台時載入資料
+    fetchOrders();
+    initAdminRealtimeListener(); 
+  } else {
+    // 🌟 當點擊「返回前台」離開後台時，把登入狀態重設為 false
+    // 這樣下次再點「後台」時，就會重新跳出密碼輸入框，並驗證你剛改好的新密碼！
+    isAdminLoggedIn = false;
+
+    if (orderChannel) {
+      supabaseClient.removeChannel(orderChannel);
+      orderChannel = null;
+    }
+  }
+}
+
+function initAdminRealtimeListener() {
+  if (orderChannel) return;
+
+  orderChannel = supabaseClient
+    .channel('admin-orders-channel')
+    .on(
+      'postgres_changes',
+      { event: 'INSERT', schema: 'public', table: 'orders' },
+      (payload) => {
+        console.log('🔔 偵測到新訂單進來：', payload.new);
+        playAdminNewOrderSound();
+        fetchOrders();
+      }
+    )
+    .on(
+      'postgres_changes',
+      { event: 'UPDATE', schema: 'public', table: 'orders' },
+      (payload) => {
+        console.log('🔄 偵測到訂單狀態或 WA 點擊更新：', payload.new);
+        // 當訂單狀態改變或點擊 WhatsApp 時自動重新抓取並刷新後台列表
+        fetchOrders();
+      }
+    )
+    .subscribe();
+}
+
+function checkUrlAdminParam() {
+  const urlParams = new URLSearchParams(window.location.search);
+  if (urlParams.get('admin') === 'true') {
+    const btn = document.getElementById('admin-btn');
+    if (btn) btn.classList.remove('hidden');
+  }
+}
+
+function switchAdminTab(tab) {
+  const ordersTab = document.getElementById('admin-orders-tab');
+  const menuTab = document.getElementById('admin-menu-tab');
+  const settingsTab = document.getElementById('admin-settings-tab');
+  const ordersBtn = document.getElementById('tab-orders-btn');
+  const menuBtn = document.getElementById('tab-menu-btn');
+  const settingsBtn = document.getElementById('tab-settings-btn');
+
+  // 先將所有分頁隱藏，所有按鈕恢復預設樣式
+  ordersTab.classList.add('hidden');
+  menuTab.classList.add('hidden');
+  settingsTab.classList.add('hidden');
+  
+  ordersBtn.className = "flex-1 py-2 rounded-lg text-gray-500 transition";
+  menuBtn.className = "flex-1 py-2 rounded-lg text-gray-500 transition";
+  settingsBtn.className = "flex-1 py-2 rounded-lg text-gray-500 transition";
+
+  const activeClass = "flex-1 py-2 rounded-lg bg-white shadow text-gray-800 transition";
+
+  if (tab === 'orders') {
+    ordersTab.classList.remove('hidden');
+    ordersBtn.className = activeClass;
+    fetchOrders();
+  } else if (tab === 'menu') {
+    menuTab.classList.remove('hidden');
+    menuBtn.className = activeClass;
+    fetchAdminMenu();
+  } else if (tab === 'settings') {
+    settingsTab.classList.remove('hidden');
+    settingsBtn.className = activeClass;
+    // 如果未來設定頁面需要載入資料，可以在這裡呼叫
+  }
+}
+
+async function fetchOrders() {
+  const container = document.getElementById('order-list');
+  if (!container) return;
+
+  container.innerHTML = '<div class="text-gray-400 text-xs text-center py-4">Chargement des commandes... / 讀取訂單中...</div>';
+
+  try {
+    const { data, error } = await supabaseClient
+      .from('orders')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error('Fetch Orders Error:', error);
+      container.innerHTML = `<div class="text-red-500 text-xs text-center py-4">讀取失敗: ${escapeHtml(error.message)}</div>`;
+      return;
+    }
+
+    rawOrders = data || [];
+    applyOrderFilters();
+
+  } catch (err) {
+    console.error('Unexpected Error:', err);
+    container.innerHTML = `<div class="text-red-500 text-xs text-center py-4">系統異常: ${escapeHtml(err.message)}</div>`;
+  }
+}
+
+function filterOrderTab(tabKey) {
+  currentOrderTab = tabKey;
+
+  const btnAll = document.getElementById('order-filter-all');
+  const btnToday = document.getElementById('order-filter-today');
+  const btnTomorrow = document.getElementById('order-filter-tomorrow');
+  const datePicker = document.getElementById('order-date-picker');
+
+  if (datePicker) datePicker.value = '';
+
+  const activeClass = "flex-1 py-1.5 rounded-lg bg-white text-green-700 shadow-sm transition font-bold";
+  const inactiveClass = "flex-1 py-1.5 rounded-lg text-gray-500 transition font-normal";
+
+  if (btnAll) btnAll.className = tabKey === 'all' ? activeClass : inactiveClass;
+  if (btnToday) btnToday.className = tabKey === 'today' ? activeClass : inactiveClass;
+  if (btnTomorrow) btnTomorrow.className = tabKey === 'tomorrow' ? activeClass : inactiveClass;
+
+  applyOrderFilters();
+}
+
+async function updateOrderStatus(orderId, newStatus) {
+  const { error } = await supabaseClient
+    .from('orders')
+    .update({ status: newStatus })
+    .eq('id', orderId);
+
+  if (error) {
+    alert('❌ 修改狀態失敗: ' + error.message);
+  } else {
+    const target = rawOrders.find(o => o.id === orderId);
+    if (target) target.status = newStatus;
+    applyOrderFilters();
+  }
+}
+
+function applyOrderFilters() {
+  const container = document.getElementById('order-list');
+  if (!container) return;
+
+  const searchKeyword = (document.getElementById('order-search-input')?.value || '').toLowerCase().trim();
+  const datePickerVal = document.getElementById('order-date-picker')?.value;
+  const statusFilterVal = document.getElementById('order-status-filter')?.value || 'all';
+
+  let filtered = [...rawOrders];
+
+  if (statusFilterVal !== 'all') {
+    filtered = filtered.filter(o => (o.status || 'pending') === statusFilterVal);
+  }
+
+  if (datePickerVal) {
+    filtered = filtered.filter(o => {
+      if (!o.created_at) return false;
+      const orderDateStr = new Date(o.created_at).toLocaleDateString('sv-SE', { timeZone: 'Europe/Paris' });
+      return orderDateStr === datePickerVal;
+    });
+  } else if (currentOrderTab === 'today' || currentOrderTab === 'tomorrow') {
+    // 用真正的配送日期（巴黎時間）比對；舊訂單沒有 delivery_date，退回用文字判斷
+    const targetDate = getParisDateStr(currentOrderTab === 'today' ? 0 : 1);
+    filtered = filtered.filter(o => {
+      if (o.delivery_date) return String(o.delivery_date).slice(0, 10) === targetDate;
+      const phoneStr = (o.phone || '').toLowerCase();
+      return currentOrderTab === 'today'
+        ? (phoneStr.includes('aujourd') || phoneStr.includes('當天') || phoneStr.includes('当天'))
+        : (phoneStr.includes('demain') || phoneStr.includes('明天'));
+    });
+  }
+
+  if (searchKeyword) {
+    filtered = filtered.filter(o => {
+      const nameMatch = (o.customer_name || '').toLowerCase().includes(searchKeyword);
+      const phoneMatch = (o.phone || '').toLowerCase().includes(searchKeyword);
+      const itemMatch = Array.isArray(o.items) && o.items.some(i => (i.name || '').toLowerCase().includes(searchKeyword));
+      const codeMatch = (o.order_code || '').toLowerCase().includes(searchKeyword);
+      return nameMatch || phoneMatch || itemMatch || codeMatch;
+    });
+  }
+
+  const validOrders = filtered.filter(o => (o.status || 'pending') !== 'cancelled');
+  const totalMoney = validOrders.reduce((sum, o) => sum + (parseFloat(o.total_price) || 0), 0);
+  
+  const moneyElem = document.getElementById('stat-total-money');
+  const countElem = document.getElementById('stat-order-count');
+  if (moneyElem) moneyElem.innerText = totalMoney.toFixed(2);
+  if (countElem) countElem.innerText = validOrders.length;
+
+  if (filtered.length === 0) {
+    container.innerHTML = '<div class="text-gray-400 text-xs text-center py-6">Aucune commande trouvée / 查無訂單</div>';
+    return;
+  }
+
+  const statusBadgeMap = {
+    'pending': '<span class="bg-amber-100 text-amber-700 px-2 py-0.5 rounded text-[10px] font-bold">⏳ 待處理</span>',
+    'delivering': '<span class="bg-blue-100 text-blue-700 px-2 py-0.5 rounded text-[10px] font-bold">🛵 配送中</span>',
+    'completed': '<span class="bg-green-100 text-green-700 px-2 py-0.5 rounded text-[10px] font-bold">✅ 已送達</span>',
+    'cancelled': '<span class="bg-gray-200 text-gray-500 px-2 py-0.5 rounded text-[10px] font-bold line-through">❌ 已取消</span>'
+  };
+
+  container.innerHTML = filtered.map(o => {
+    const st = o.status || 'pending';
+    const isCancelled = st === 'cancelled';
+    const createdTimeStr = o.created_at ? new Date(o.created_at).toLocaleString() : '';
+
+    const whatsappBadge = o.whatsapp_sent 
+      ? '<span class="bg-green-50 text-green-700 border border-green-200 px-1.5 py-0.5 rounded text-[10px] font-bold">💬 已點擊WA</span>' 
+      : '<span class="bg-gray-100 text-gray-400 px-1.5 py-0.5 rounded text-[10px]">⏳ 未點WA</span>';
+    
+    const itemsList = Array.isArray(o.items) 
+      ? o.items.map(i => `<li class="flex justify-between"><span>${escapeHtml(i.name || '菜品')}</span><span class="font-bold">x${escapeHtml(i.qty || 1)}</span></li>`).join('')
+      : '<li class="text-gray-400">無明細</li>';
+
+    return `
+      <div class="bg-white p-3.5 rounded-xl border-l-4 ${st === 'completed' ? 'border-green-500' : (isCancelled ? 'border-gray-300 opacity-60' : 'border-orange-500')} shadow-sm space-y-2">
+        <div class="flex justify-between items-start font-bold text-gray-800">
+          <div>
+            <div class="flex items-center gap-2">
+              <span class="text-sm">👤 ${escapeHtml(o.customer_name || '匿名顧客')}</span>
+              ${statusBadgeMap[st] || statusBadgeMap['pending']}
+              ${whatsappBadge}
+            </div>
+            <div class="text-[10px] text-gray-400 font-normal mt-0.5">${o.order_code ? '#' + escapeHtml(o.order_code) + ' · ' : ''}${createdTimeStr}</div>
+          </div>
+          <span class="text-green-600 text-base font-black ${isCancelled ? 'line-through text-gray-400' : ''}">${(o.total_price || 0).toFixed(2)} €</span>
+        </div>
+
+        <div class="text-xs font-medium text-orange-700 bg-orange-50 p-2 rounded-lg border border-orange-100 break-all leading-relaxed">
+          📍 ${escapeHtml(o.phone || '無聯繫資訊')}
+        </div>
+
+        <ul class="text-xs bg-gray-50 p-2.5 rounded-lg border space-y-1 text-gray-700">
+          ${itemsList}
+        </ul>
+
+        <div class="flex justify-between items-center pt-2 border-t text-xs">
+          <div class="flex items-center gap-1">
+            <span class="text-[10px] text-gray-400 font-bold">狀態:</span>
+            <select onchange="updateOrderStatus('${o.id}', this.value)" class="text-[11px] border rounded p-1 font-bold bg-gray-50 text-gray-700">
+              <option value="pending" ${st === 'pending' ? 'selected' : ''}>⏳ 待處理</option>
+              <option value="delivering" ${st === 'delivering' ? 'selected' : ''}>🛵 配送中</option>
+              <option value="completed" ${st === 'completed' ? 'selected' : ''}>✅ 已送達</option>
+              <option value="cancelled" ${st === 'cancelled' ? 'selected' : ''}>❌ 已取消</option>
+            </select>
+          </div>
+
+          <div class="flex items-center gap-1.5">
+            ${isCancelled ? `
+              <button type="button" onclick="deleteOrderFromSupabase('${o.id}')" class="bg-red-100 hover:bg-red-200 text-red-600 text-[10px] px-2 py-1 rounded font-bold transition">
+                🗑️ 永久刪除
+              </button>
+            ` : ''}
+            <button type="button" onclick="copyOrderForDriver('${o.id}')" class="bg-gray-100 hover:bg-gray-200 text-gray-700 text-[10px] px-2 py-1 rounded font-bold transition">
+              📋 派送小票
+            </button>
+          </div>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function copyOrderForDriver(orderId) {
+  const order = rawOrders.find(o => o.id == orderId);
+  if (!order) return alert('找不到訂單資料，請重新整理後再試。');
+  const name = order.customer_name || '';
+  const contactInfo = order.phone || '';
+  const total = order.total_price;
+  const text = `🛵 【外賣派送憑證${order.order_code ? ' #' + order.order_code : ''}】\n👤 客戶: ${name}\n📍 聯繫/地址: ${contactInfo}\n💰 應收金額: ${total} €`;
+  navigator.clipboard.writeText(text).then(() => {
+    alert('📋 已成功複製派送資訊！可以貼給司機或外賣員。');
+  }).catch(() => {
+    alert('複製失敗，請手動複製。');
+  });
+}
+
+async function fetchAdminMenu() {
+  const container = document.getElementById('admin-menu-list');
+  if (!container) return;
+
+  if (!menuData || menuData.length === 0) {
+    const { data } = await supabaseClient.from('menu_items').select('*');
+    if (data) menuData = data;
+  }
+
+  if (!menuData || menuData.length === 0) {
+    container.innerHTML = '<div class="text-gray-400 text-xs text-center py-4">Aucun plat / 暫無菜品</div>';
+    return;
+  }
+
+  const categoryPriority = {
+    'Specialite': 1, 'Viandes': 2, 'Seafood': 3, 'Beef': 4, 'Legumes': 5, 'Staple': 6
+  };
+
+  const categoryLabelMap = {
+    'Specialite': '🌟 每日特色', 'Viandes': '🥩 葷菜', 'Seafood': '🐟 海鮮類',
+    'Beef': '🐂 牛肉類', 'Legumes': '🥬 素菜', 'Staple': '🍚 主食'
+  };
+
+  menuData.sort((a, b) => {
+    const catAKey = normalizeCategory(a.category, a.name_zh, a.name_fr);
+    const catBKey = normalizeCategory(b.category, b.name_zh, b.name_fr);
+
+    const priorityA = categoryPriority[catAKey] || 99;
+    const priorityB = categoryPriority[catBKey] || 99;
+
+    if (priorityA !== priorityB) {
+      return priorityA - priorityB;
+    }
+    return (a.sort_order || 99) - (b.sort_order || 99);
+  });
+
+  let lastCategoryKey = null;
+  let htmlContent = '';
+
+  menuData.forEach(item => {
+    const stockVal = (item && typeof item.stock === 'number') ? item.stock : 99;
+    const isAvailable = (item.is_available !== false) && (stockVal > 0);
+    const normKey = normalizeCategory(item.category, item.name_zh, item.name_fr);
+
+    if (normKey !== lastCategoryKey) {
+      lastCategoryKey = normKey;
+      htmlContent += `
+        <div class="pt-3 pb-1 text-xs font-bold text-gray-500 border-b border-gray-200 flex items-center justify-between">
+          <span>${categoryLabelMap[normKey] || '其他分類'}</span>
+        </div>
+      `;
+    }
+
+    const imgThumb = item.image_url 
+      ? `<img src="${escapeHtml(item.image_url)}" class="w-10 h-10 rounded object-cover mr-2 flex-shrink-0">`
+      : `<div class="w-10 h-10 rounded bg-gray-100 flex items-center justify-center text-xs text-gray-400 mr-2 flex-shrink-0">🍲</div>`;
+
+    htmlContent += `
+      <div class="bg-white p-2.5 rounded-xl border flex justify-between items-center shadow-sm hover:border-gray-300 transition">
+        <div class="flex items-center flex-1 pr-2 min-w-0">
+          ${imgThumb}
+          <div class="min-w-0 flex-1">
+            <div class="font-bold text-gray-800 text-xs truncate">
+              <span class="bg-gray-100 text-gray-600 px-1 py-0.5 rounded mr-1 font-mono">#${item.sort_order || 99}</span>
+              ${escapeHtml(item.name_fr)} (${escapeHtml(item.name_zh)})
+            </div>
+            <div class="text-green-600 font-extrabold text-xs mt-0.5 flex items-center gap-2">
+              <span>${item.price || 0} €</span>
+              <span class="text-gray-500 font-normal text-[10px] bg-gray-100 px-1 py-0.5 rounded">庫存: ${stockVal}</span>
+            </div>
+          </div>
+        </div>
+        <div class="flex items-center gap-1 flex-shrink-0">
+          <button type="button" onclick="toggleDishAvailability(event, '${item.id}', ${!isAvailable})" class="px-2 py-1 rounded text-[10px] font-bold transition ${isAvailable ? 'bg-green-100 text-green-700 hover:bg-green-200' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}">
+            ${isAvailable ? 'En vente' : 'Masqué'}
+          </button>
+          <button type="button" onclick="openDishModal('${item.id}')" class="bg-orange-100 text-orange-600 px-2 py-1 rounded text-[10px] font-bold hover:bg-orange-200">
+            Modifier
+          </button>
+          <button type="button" onclick="deleteDish(event, '${item.id}')" class="bg-red-100 text-red-600 px-2 py-1 rounded text-[10px] font-bold hover:bg-red-200">
+            Suppr.
+          </button>
+        </div>
+      </div>
+    `;
+  });
+
+  container.innerHTML = htmlContent;
+}
+
+async function toggleDishAvailability(event, id, newStatus) {
+  if (event) event.stopPropagation();
+  
+  const { error } = await supabaseClient.from('menu_items').update({ is_available: newStatus }).eq('id', id);
+  if (error) {
+    alert('修改狀態失敗: ' + error.message);
+  } else {
+    const target = menuData.find(m => m.id === id);
+    if (target) target.is_available = newStatus;
+
+    fetchAdminMenu();
+    renderMenu();
+  }
+}
+
+function openDishModal(id = null) {
+  const modal = document.getElementById('dish-modal');
+  const title = document.getElementById('dish-modal-title');
+  if (!modal) return;  
+  const sortInput = document.getElementById('dish-sort');
+  const stockInput = document.getElementById('dish-stock');
+  const urlInput = document.getElementById('dish-image-url');
+  const fileInput = document.getElementById('dish-img-file');
+  const preview = document.getElementById('dish-img-preview');
+
+  if (fileInput) fileInput.value = '';
+
+  if (id) {
+    const item = menuData.find(m => m.id === id);
+    if (!item) return;
+    title.innerText = 'Modifier le plat / 編輯菜品';
+    document.getElementById('dish-id').value = item.id;
+    document.getElementById('dish-name-fr').value = item.name_fr || '';
+    document.getElementById('dish-name-zh').value = item.name_zh || '';
+    document.getElementById('dish-price').value = item.price || '';
+    if (sortInput) sortInput.value = item.sort_order || 1;
+    if (stockInput) stockInput.value = (typeof item.stock === 'number') ? item.stock : 99;
+    if (urlInput) urlInput.value = item.image_url || '';
+    
+    if (preview) {
+      preview.innerHTML = item.image_url 
+        ? `<img src="${escapeHtml(item.image_url)}" class="w-full h-full object-cover">`
+        : '無圖片';
+    }
+
+    const normKey = normalizeCategory(item.category, item.name_zh, item.name_fr);
+    const catSelect = document.getElementById('dish-category');
+    if (catSelect) {
+      if (normKey === 'Specialite') catSelect.value = '每日特色';
+      else if (normKey === 'Seafood') catSelect.value = '海鮮類';
+      else if (normKey === 'Beef') catSelect.value = '牛肉類';
+      else if (normKey === 'Legumes') catSelect.value = '素菜';
+      else if (normKey === 'Staple') catSelect.value = '主食';
+      else catSelect.value = '葷菜';
+    }
+  } else {
+    title.innerText = 'Ajouter un plat / 新增菜品';
+    document.getElementById('dish-id').value = '';
+    document.getElementById('dish-name-fr').value = '';
+    document.getElementById('dish-name-zh').value = '';
+    document.getElementById('dish-price').value = '';
+    if (sortInput) sortInput.value = '1';
+    if (stockInput) stockInput.value = '99';
+    if (urlInput) urlInput.value = '';
+    if (preview) preview.innerHTML = '無圖片';
+    document.getElementById('dish-category').value = '每日特色';
+  }
+  modal.classList.remove('hidden');
+}
+
+function closeDishModal() {
+  const modal = document.getElementById('dish-modal');
+  if (modal) modal.classList.add('hidden');
+}
+
+async function saveDish() {
+  const id = document.getElementById('dish-id').value;
+  const name_fr = document.getElementById('dish-name-fr').value.trim();
+  const name_zh = document.getElementById('dish-name-zh').value.trim();
+  const price = parseFloat(document.getElementById('dish-price').value);
+  const sortInput = document.getElementById('dish-sort');
+  const stockInput = document.getElementById('dish-stock');
+  const fileInput = document.getElementById('dish-img-file');
+  let image_url = document.getElementById('dish-image-url').value.trim();
+
+  const sort_order = sortInput ? (parseInt(sortInput.value) || 1) : 1;
+  const stock = stockInput ? (parseInt(stockInput.value) >= 0 ? parseInt(stockInput.value) : 99) : 99;
+  const category = document.getElementById('dish-category').value;
+
+  if (!name_fr || !name_zh || isNaN(price)) {
+    return alert('Veuillez remplir tous les champs / 請完整填寫名稱與價格！');
+  }
+
+  if (fileInput && fileInput.files && fileInput.files[0]) {
+    const file = fileInput.files[0];
+    const fileExt = file.name.split('.').pop();
+    const fileName = `${Date.now()}_${Math.random().toString(36).substring(2, 7)}.${fileExt}`;
+
+    const { data: uploadData, error: uploadError } = await supabaseClient.storage
+      .from('dishes')
+      .upload(fileName, file);
+
+    if (uploadError) {
+      alert('❌ 圖片上傳失敗: ' + uploadError.message);
+      return;
+    }
+
+    const { data: publicUrlData } = supabaseClient.storage
+      .from('dishes')
+      .getPublicUrl(fileName);
+
+    if (publicUrlData) {
+      image_url = publicUrlData.publicUrl;
+    }
+  }
+
+  const payload = { 
+    name_fr, 
+    name_zh, 
+    price, 
+    sort_order,
+    stock,
+    category,
+    image_url,
+    is_available: stock > 0 
+  };
+
+  let res;
+  if (id) {
+    res = await supabaseClient.from('menu_items').update(payload).eq('id', id);
+  } else {
+    res = await supabaseClient.from('menu_items').insert([payload]);
+  }
+
+  if (res.error) {
+    alert('❌ 保存失敗: ' + res.error.message);
+  } else {
+    closeDishModal();
+    await fetchMenu();
+    fetchAdminMenu();
+  }
+}
+
+async function deleteDish(event, id) {
+  const dishToDelete = menuData.find(m => m.id === id);
+  const nameZh = dishToDelete ? (dishToDelete.name_zh || '') : '';
+  if (event) event.stopPropagation();
+
+  const confirmDelete = confirm(`⚠️ Êtes-vous sûr de vouloir supprimer "${nameZh}" ?\n確定要永久刪除菜品「${nameZh}」嗎？刪除後無法恢復！`);
+  if (!confirmDelete) return;
+
+  const { error } = await supabaseClient.from('menu_items').delete().eq('id', id);
+
+  if (error) {
+    alert('❌ 刪除失敗: ' + error.message);
+  } else {
+    menuData = menuData.filter(m => m.id !== id);
+    alert('✅ 菜品已成功刪除！');
+    fetchAdminMenu();
+    renderMenu();
+  }
+}
+
+window.addEventListener('DOMContentLoaded', () => {
+  fetchMenu();
+  checkUrlAdminParam();
+  loadStoreSettings(); // 👈 載入動態設定
+  updateBusinessStatusBar();
+  setInterval(updateBusinessStatusBar, 60000);
+});
+
+function openDishDetailModal(id) {
+  const item = menuData.find(i => i.id === id);
+  if (!item) return;
+
+  const modal = document.getElementById('dish-detail-modal');
+  const imgContainer = document.getElementById('detail-modal-img-container');
+  const nameFr = document.getElementById('detail-modal-name-fr');
+  const nameZh = document.getElementById('detail-modal-name-zh');
+  const priceElem = document.getElementById('detail-modal-price');
+  const stockElem = document.getElementById('detail-modal-stock');
+  const addBtn = document.getElementById('detail-modal-add-btn');
+
+  if (item.image_url) {
+    imgContainer.innerHTML = `<img src="${escapeHtml(item.image_url)}" class="w-full h-full object-cover">`;
+  } else {
+    imgContainer.innerHTML = `<div class="text-4xl text-orange-400 font-bold">🍲</div>`;
+  }
+
+  nameFr.innerText = item.name_fr || '';
+  nameZh.innerText = item.name_zh || '';
+  priceElem.innerText = (item.price || 0).toFixed(2) + ' €';
+  
+  const maxStock = (typeof item.stock === 'number') ? item.stock : 99;
+  const isAvailable = (item.is_available !== false) && (maxStock > 0);
+
+  stockElem.innerText = `Stock: ${maxStock}`;
+
+  if (isAvailable) {
+    addBtn.disabled = false;
+    addBtn.className = "w-full bg-green-500 hover:bg-green-600 text-white font-bold py-3 rounded-xl text-sm shadow transition active:scale-95";
+    addBtn.innerText = "Ajouter au panier / 加入購物車 🛒";
+    addBtn.onclick = () => {
+      updateCart(item.id, 1);
+      closeDishDetailModal();
+    };
+  } else {
+    addBtn.disabled = true;
+    addBtn.className = "w-full bg-gray-300 text-gray-500 font-bold py-3 rounded-xl text-sm cursor-not-allowed";
+    addBtn.innerText = "Épuisé / 已售罄";
+  }
+
+  modal.classList.remove('hidden');
+}
+
+function closeDishDetailModal() {
+  const modal = document.getElementById('dish-detail-modal');
+  if (modal) modal.classList.add('hidden');
+}
+
+async function deleteOrderFromSupabase(orderId) {
+  const customerName = (rawOrders.find(o => o.id == orderId) || {}).customer_name || '';
+  const confirmDelete = confirm(`⚠️ Supprimer définitivement la commande de "${customerName}" ?\n\n確定要永久刪除來自「${customerName}」的這筆訂單嗎？`);
+  
+  if (!confirmDelete) return;
+
+  const targetOrder = rawOrders.find(o => o.id == orderId);
+  console.log("👉 點擊刪除的完整訂單資料物件：", targetOrder);
+  console.log("👉 傳入的 orderId 數值與類型:", orderId, typeof orderId);
+
+  try {
+    const { data, error } = await supabaseClient
+      .from('orders')
+      .delete()
+      .eq('id', orderId)
+      .select();
+
+    if (error) {
+      console.error('Supabase 刪除報錯:', error);
+      alert('❌ 刪除失敗: ' + error.message);
+    } else if (!data || data.length === 0) {
+      alert('⚠️ 刪除失敗：請按 F12 打開 Console 查看印出的訂單資料結構。');
+    } else {
+      alert('✅ 訂單已成功永久刪除！');
+      fetchOrders();
+    }
+  } catch (err) {
+    console.error('刪除過程發生異常:', err);
+    alert('❌ 系統異常: ' + err.message);
+  }
+}
+
+function generateWhatsAppLink(orderData, orderId) {
+  const phone = String(STORE_CONFIG.whatsappNumber || '').replace(/[^0-9]/g, '');
+  
+  const itemsText = orderData.items.map(item => `- ${item.name} x${item.quantity} (€${(item.price * item.quantity).toFixed(2)})`).join('\n');
+  
+  const message = `Bonjour ${STORE_CONFIG.storeName} ! 👋
+J'ai passé une commande sur votre site.
+----------------------------------
+🧾 訂單號 / Order ID: #${orderId}
+👤 姓名 / Nom: ${orderData.customer_name}
+📞 電話 / Tél: ${orderData.customer_phone}
+📍 地址/備註: ${orderData.delivery_address || '到店自取 / Click & Collect'}
+
+🛍️ 訂單明細 / Détails:
+${itemsText}
+
+💰 總金額 / Total: €${orderData.total_price.toFixed(2)}
+----------------------------------
+Veuillez me confirmer la commande pour lancer la préparation, merci ! 🙏`;
+
+  return `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
+}
+
+function showWhatsAppModal(whatsappUrl, dbId, orderCode) {
+  const existingModal = document.getElementById('whatsapp-modal');
+  if (existingModal) existingModal.remove();
+
+  const modalHtml = `
+    <div id="whatsapp-modal" class="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center p-4 z-50 animate-fade-in">
+      <div class="bg-white rounded-2xl max-w-md w-full p-6 text-center shadow-2xl transform transition-all">
+        <div class="w-16 h-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-4 text-3xl">
+          📱
+        </div>
+        <h3 class="text-xl font-bold text-gray-800 mb-2">🎉 下單成功！Commande envoyée !</h3>
+        <p class="text-xs text-gray-500 mb-4">訂單編號 / N°: #${escapeHtml(orderCode || String(dbId).slice(0, 8))}</p>
+        
+        <div class="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-6 text-left text-sm text-amber-800">
+          ⚠️ <strong>提醒 / Attention :</strong><br>
+          請點擊下方按鈕，發送 WhatsApp 訊息給店家確認訂單，店家收到後才會開始製作哦！<br>
+          <span class="text-xs text-amber-600">Veuillez envoyer un message WhatsApp pour valider la commande.</span>
+        </div>
+
+        <a href="${escapeHtml(whatsappUrl)}" target="_blank" onclick="markWhatsappClicked('${escapeHtml(dbId)}')"
+           class="w-full bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-4 rounded-xl shadow-lg flex items-center justify-center space-x-2 transition duration-200 mb-3 text-lg">
+          <svg class="w-6 h-6 fill-current" viewBox="0 0 24 24">
+            <path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981z"/>
+          </svg>
+          <span>一鍵開啟 WhatsApp 發送確認</span>
+        </a>
+
+        <button onclick="document.getElementById('whatsapp-modal').remove()" class="text-xs text-gray-400 hover:text-gray-600 mt-2 underline">
+          關閉視窗 / Fermer
+        </button>
+      </div>
+    </div>
+  `;
+
+  document.body.insertAdjacentHTML('beforeend', modalHtml);
+}
+
+async function markWhatsappClicked(orderId) {
+  playWhatsappClickSound();
+
+  if (!orderId) return;
+  try {
+    await supabaseClient
+      .from('orders')
+      .update({ whatsapp_sent: true })
+      .eq('id', orderId);
+  } catch (e) {
+    console.error('更新 WhatsApp 點擊狀態失敗:', e);
+  }
+}
+
+// 1. 從 Supabase 載入 WhatsApp 設定
+// 1. 從 Supabase 載入設定
 async function loadStoreSettings() {
   try {
-    const { data } = await supabaseClient.from('store_settings').select('*').eq('id', 1).single();
+    const { data, error } = await supabaseClient
+      .from('store_settings')
+      .select('whatsapp_number, store_name, store_slogan, store_hours_text, business_mode, manual_open') // 👈 必須包含這三個新欄位
+      .eq('id', 1)
+      .single();
+
     if (data) {
       if (data.whatsapp_number) {
         STORE_CONFIG.whatsappNumber = data.whatsapp_number;
-        const el = document.getElementById('setting-whatsapp-input');
-        if (el) el.value = STORE_CONFIG.whatsappNumber;
+        const inputEl = document.getElementById('setting-whatsapp-input');
+        if (inputEl) inputEl.value = STORE_CONFIG.whatsappNumber;
       }
+
       if (data.store_name) {
         STORE_CONFIG.storeName = data.store_name;
-        const el = document.getElementById('setting-store-name-input');
-        if (el) el.value = STORE_CONFIG.storeName;
+        const nameInput = document.getElementById('setting-store-name-input');
+        if (nameInput) nameInput.value = STORE_CONFIG.storeName;
         const titleEl = document.getElementById('store-title-text');
         if (titleEl) titleEl.innerText = STORE_CONFIG.storeName;
       }
+
       if (data.store_slogan) {
         STORE_CONFIG.storeSlogan = data.store_slogan;
-        const el = document.getElementById('setting-store-slogan-input');
-        if (el) el.value = STORE_CONFIG.storeSlogan;
+        const sloganInput = document.getElementById('setting-store-slogan-input');
+        if (sloganInput) sloganInput.value = STORE_CONFIG.storeSlogan;
         const sloganEl = document.getElementById('store-slogan-text');
         if (sloganEl) sloganEl.innerText = STORE_CONFIG.storeSlogan;
       }
+
+      // 🌟 檢查這裡有沒有這段營業時間的讀取邏輯：
       if (data.store_hours_text) {
         STORE_CONFIG.storeHoursText = data.store_hours_text;
-        const el = document.getElementById('setting-hours-text-input');
-        if (el) el.value = STORE_CONFIG.storeHoursText;
+        const hoursInput = document.getElementById('setting-hours-text-input');
+        if (hoursInput) hoursInput.value = STORE_CONFIG.storeHoursText;
         const hoursEl = document.getElementById('store-hours-text');
         if (hoursEl) hoursEl.innerText = STORE_CONFIG.storeHoursText;
       }
+
       if (data.business_mode) {
         STORE_CONFIG.businessMode = data.business_mode;
-        const el = document.getElementById('setting-business-mode-select');
-        if (el) el.value = STORE_CONFIG.businessMode;
+        const modeSelect = document.getElementById('setting-business-mode-select');
+        if (modeSelect) modeSelect.value = STORE_CONFIG.businessMode;
       }
+
       if (typeof data.manual_open === 'boolean') {
         STORE_CONFIG.manualOpen = data.manual_open;
-        const el = document.getElementById('setting-manual-open-select');
-        if (el) el.value = STORE_CONFIG.manualOpen ? "true" : "false";
+        const manualSelect = document.getElementById('setting-manual-open-select');
+        if (manualSelect) manualSelect.value = STORE_CONFIG.manualOpen ? "true" : "false";
       }
-      // 載入群主設定的每週配送日
-      if (Array.isArray(data.allowed_days)) {
-        STORE_CONFIG.allowedDays = data.allowed_days;
-        // 同步勾選框狀態
-        document.querySelectorAll('.day-checkbox').forEach(chk => {
-          chk.checked = STORE_CONFIG.allowedDays.includes(parseInt(chk.value, 10));
-        });
-      }
+
+      toggleManualOpenOption();
       updateBusinessStatusBar();
     }
-  } catch (err) { console.error(err); }
+  } catch (err) {
+    console.error("載入設定失敗:", err);
+  }
 }
 
-// 🌟 整合版：一次儲存營業時間、營業模式與每週送餐日
-async function saveBusinessHoursInfo() {
-  const hoursInput = document.getElementById('setting-hours-text-input');
-  const modeSelect = document.getElementById('setting-business-mode-select');
-  const manualSelect = document.getElementById('setting-manual-open-select');
-  const statusEl = document.getElementById('business-hours-save-status');
+// 2. 儲存 WhatsApp 設定至 Supabase
+async function saveWhatsAppNumber() {
+  const inputEl = document.getElementById('setting-whatsapp-input');
+  const statusEl = document.getElementById('whatsapp-save-status');
+  if (!inputEl) return;
 
-  // 1. 抓取後台勾選的每週送餐日
-  const checkboxes = document.querySelectorAll('.day-checkbox:checked');
-  const selectedDays = Array.from(checkboxes).map(chk => parseInt(chk.value, 10));
-
-  if (!hoursInput || !modeSelect || !manualSelect) return;
-
-  const newHoursText = hoursInput.value.trim() || "🕒 13:00 - 10:00 (Lundi - Dimanche)";
-  const newMode = modeSelect.value;
-  const newManualOpen = manualSelect.value === 'true';
+  const newNumber = inputEl.value.trim().replace(/[^0-9]/g, '');
+  if (!newNumber) {
+    alert("請輸入有效的電話號碼！");
+    return;
+  }
 
   try {
-    // 2. 一併更新至 Supabase 的 store_settings 資料表
+    const { error } = await supabaseClient
+      .from('store_settings')
+      .update({ whatsapp_number: newNumber, updated_at: new Date() })
+      .eq('id', 1);
+
+    if (error) throw error;
+
+    STORE_CONFIG.whatsappNumber = newNumber;
+
+    if (statusEl) {
+      statusEl.innerText = "✅ WhatsApp 接收號碼已成功更新！";
+      statusEl.className = "text-sm mt-2 text-green-600 font-medium block";
+      setTimeout(() => { statusEl.className = "text-sm mt-2 hidden"; }, 3000);
+    }
+  } catch (err) {
+    console.error("儲存失敗:", err);
+    if (statusEl) {
+      statusEl.innerText = "❌ 儲存失敗";
+      statusEl.className = "text-sm mt-2 text-red-600 font-medium block";
+    }
+  }
+}
+
+async function saveStoreInfo() {
+  const nameInput = document.getElementById('setting-store-name-input');
+  const sloganInput = document.getElementById('setting-store-slogan-input');
+  const statusEl = document.getElementById('store-info-save-status');
+
+  if (!nameInput || !sloganInput) return;
+
+  const newName = nameInput.value.trim() || "Cici Cuisine";
+  const newSlogan = sloganInput.value.trim() || "🕒 Livraison | 配送";
+
+  try {
     const { error } = await supabaseClient
       .from('store_settings')
       .update({ 
-        store_hours_text: newHoursText, 
-        business_mode: newMode, 
-        manual_open: newManualOpen,
-        allowed_days: selectedDays, // 👈 儲存勾選的星期陣列 (例如 [1, 4])
+        store_name: newName, 
+        store_slogan: newSlogan, 
         updated_at: new Date() 
       })
       .eq('id', 1);
 
     if (error) throw error;
 
-    // 3. 更新前端記憶體中的設定
-    STORE_CONFIG.storeHoursText = newHoursText;
-    STORE_CONFIG.businessMode = newMode;
-    STORE_CONFIG.manualOpen = newManualOpen;
-    STORE_CONFIG.allowedDays = selectedDays;
+    // 更新記憶體中的設定
+    STORE_CONFIG.storeName = newName;
+    STORE_CONFIG.storeSlogan = newSlogan;
 
-    // 4. 即時更新畫面上的營業狀態
-    const hoursEl = document.getElementById('store-hours-text');
-    if (hoursEl) hoursEl.innerText = newHoursText;
+    // 即時更新前台顯示
+    const titleEl = document.getElementById('store-title-text');
+    if (titleEl) titleEl.innerText = newName;
 
-    updateBusinessStatusBar();
+    const sloganEl = document.getElementById('store-slogan-text');
+    if (sloganEl) sloganEl.innerText = newSlogan;
 
-    // 5. 顯示成功提示
     if (statusEl) {
-      statusEl.innerText = "✅ 營業與送餐日設定已成功更新！";
+      statusEl.innerText = "✅ 店鋪資訊已成功更新！";
       statusEl.className = "text-xs mt-1 text-green-600 font-bold block text-center";
       setTimeout(() => { statusEl.className = "text-xs mt-1 hidden text-center"; }, 3000);
     }
@@ -587,10 +1596,126 @@ async function saveBusinessHoursInfo() {
   }
 }
 
-// 其他標準工具涵式維持不變...
-window.addEventListener('DOMContentLoaded', () => {
-  fetchMenu();
-  loadStoreSettings();
-  updateBusinessStatusBar();
-  setInterval(updateBusinessStatusBar, 60000);
-});
+function toggleManualOpenOption() {
+  const modeSelect = document.getElementById('setting-business-mode-select');
+  const container = document.getElementById('manual-open-container');
+  if (!modeSelect || !container) return;
+
+  if (modeSelect.value === 'manual') {
+    container.classList.remove('hidden');
+  } else {
+    container.classList.add('hidden');
+  }
+}
+
+async function saveBusinessHoursInfo() {
+  const hoursInput = document.getElementById('setting-hours-text-input');
+  const modeSelect = document.getElementById('setting-business-mode-select');
+  const manualSelect = document.getElementById('setting-manual-open-select');
+  const statusEl = document.getElementById('business-hours-save-status');
+
+  if (!hoursInput || !modeSelect || !manualSelect) return;
+
+  const newHoursText = hoursInput.value.trim() || "🕒 12:00 - 14:00 (Lundi - Samedi)";
+  const newMode = modeSelect.value;
+  const newManualOpen = manualSelect.value === 'true';
+
+  try {
+    const { error } = await supabaseClient
+      .from('store_settings')
+      .update({ 
+        store_hours_text: newHoursText, 
+        business_mode: newMode, 
+        manual_open: newManualOpen,
+        updated_at: new Date() 
+      })
+      .eq('id', 1);
+
+    if (error) throw error;
+
+    STORE_CONFIG.storeHoursText = newHoursText;
+    STORE_CONFIG.businessMode = newMode;
+    STORE_CONFIG.manualOpen = newManualOpen;
+
+    const hoursEl = document.getElementById('store-hours-text');
+    if (hoursEl) hoursEl.innerText = newHoursText;
+
+    updateBusinessStatusBar();
+
+    if (statusEl) {
+      statusEl.innerText = "✅ 營業設定已成功更新！";
+      statusEl.className = "text-xs mt-1 text-green-600 font-bold block text-center";
+      setTimeout(() => { statusEl.className = "text-xs mt-1 hidden text-center"; }, 3000);
+    }
+  } catch (err) {
+    console.error("儲存失敗:", err);
+    if (statusEl) {
+      statusEl.innerText = "❌ 儲存失敗";
+      statusEl.className = "text-xs mt-1 text-red-600 font-bold block text-center";
+    }
+  }
+}
+
+// 🔑 修改後台密碼函式
+async function saveAdminPassword() {
+  const oldPassInput = document.getElementById('setting-old-password');
+  const newPassInput = document.getElementById('setting-new-password');
+  const statusEl = document.getElementById('admin-password-save-status');
+
+  if (!oldPassInput || !newPassInput) return;
+
+  const oldPass = oldPassInput.value.trim();
+  const newPass = newPassInput.value.trim();
+
+  if (!oldPass || !newPass) {
+    alert("請完整填寫舊密碼與新密碼！");
+    return;
+  }
+
+  try {
+    // 1. 先從 Supabase 讀取目前的密碼設定（假設資料表 store_settings 的 id = 1）
+    const { data, error: fetchError } = await supabaseClient
+      .from('store_settings')
+      .select('admin_password')
+      .eq('id', 1)
+      .single();
+
+    if (fetchError) throw fetchError;
+
+    // 如果資料庫還沒設定過 admin_password，預設舊密碼為 "8888"
+    const currentDbPassword = (data && data.admin_password) ? data.admin_password : "8888";
+
+    // 2. 驗證舊密碼是否正確
+    if (oldPass !== currentDbPassword) {
+      alert("❌ 舊密碼輸入錯誤！");
+      return;
+    }
+
+    // 3. 更新至 Supabase
+    const { error: updateError } = await supabaseClient
+      .from('store_settings')
+      .update({ 
+        admin_password: newPass, 
+        updated_at: new Date() 
+      })
+      .eq('id', 1);
+
+    if (updateError) throw updateError;
+
+    // 清空輸入框
+    oldPassInput.value = '';
+    newPassInput.value = '';
+
+    if (statusEl) {
+      statusEl.innerText = "✅ 後台密碼已成功更新！";
+      statusEl.className = "text-xs mt-1 text-green-600 font-bold block text-center";
+      setTimeout(() => { statusEl.className = "text-xs mt-1 hidden text-center"; }, 3000);
+    }
+  } catch (err) {
+    console.error("更新密碼失敗:", err);
+    if (statusEl) {
+      statusEl.innerText = "❌ 密碼更新失敗";
+      statusEl.className = "text-xs mt-1 text-red-600 font-bold block text-center";
+    }
+  }
+}
