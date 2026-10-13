@@ -1815,20 +1815,40 @@ async function saveAdminPassword() {
 }
 
 // 🔄 切換「自取」或「配送」時的畫面連動
+// 🔄 切換「自取」或「配送」時的畫面連動
 function toggleFulfillmentMode() {
-  const mode = document.getElementById('cust-fulfillment').value;
+  const modeSelect = document.getElementById('cust-fulfillment');
   const addressContainer = document.getElementById('address-container');
   const addressInput = document.getElementById('cust-address');
+  
+  if (!modeSelect || !addressContainer) return;
+  const mode = modeSelect.value;
 
   if (mode === 'pickup') {
-    // 如果選擇自取：隱藏地址欄位，並清空地址（避免驗證殘留）
-    if (addressContainer) addressContainer.classList.add('hidden');
+    // 選擇自取：直接強制隱藏地址欄位
+    addressContainer.style.display = 'none';
     if (addressInput) addressInput.value = '到店自取 (Click & Collect)';
   } else {
-    // 如果選擇配送：顯示地址欄位，並清空預設文字讓顧客填寫
-    if (addressContainer) addressContainer.classList.remove('hidden');
+    // 選擇配送：顯示地址欄位
+    addressContainer.style.display = 'block';
     if (addressInput && addressInput.value.includes('到店自取')) {
       addressInput.value = '';
     }
   }
+}
+
+function openCheckoutModal() {
+  if (!checkIsBusinessOpen()) {
+    alert(`❌ Désolé, nous sommes actuellement fermés !\n抱歉，目前為非營業時間（${STORE_CONFIG.storeHoursText}），暫不接受下單！`);
+    return;
+  }
+  if (Object.keys(cart).length === 0) return alert('Votre panier est vide ! / 購物車是空的！');
+  
+  // 🌟 開啟時自動根據時間鎖定配送日期選項
+  updateCheckoutDateOptions();
+  
+  // 🌟 打開彈窗時，順便同步一次取餐方式的畫面顯示狀態
+  toggleFulfillmentMode();
+
+  document.getElementById('checkout-modal').classList.remove('hidden');
 }
