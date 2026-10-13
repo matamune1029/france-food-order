@@ -67,6 +67,7 @@ function generateOrderCode() {
 
 // ⏰ 檢查是否在營業時間內 (13:00 - 次日 10:00；10:00 - 13:00 為休息)
 // ⏰ 檢查是否在營業時間內（動態從 STORE_CONFIG.storeHoursText 解析，支援跨日如 16:00 - 10:00）
+// ⏰ 精準跨日送餐日營業判斷：依據「目標送餐日」與 13:00 - 10:00 窗口計算
 function checkIsBusinessOpen() {
   if (STORE_CONFIG.businessMode === 'manual') {
     return STORE_CONFIG.manualOpen;
@@ -94,37 +95,31 @@ function checkIsBusinessOpen() {
 
     const weekdayMap = { 'Sun': 0, 'Mon': 1, 'Tue': 2, 'Wed': 3, 'Thu': 4, 'Fri': 5, 'Sat': 6 };
     const currentDayNum = weekdayMap[weekdayStr] ?? 1;
+    const totalMinutes = hour * 60 + minute;
 
-    // 檢查今天是否在群主設定的允許送餐日中
+    // 1. 檢查當前時間是否在每日的營業窗口內 (13:00 至次日 10:00)
+    // 註：10:00 到 13:00 (600分至780分) 為中間休息/派送時間，不開放下單
+    const isInTimeWindow = (totalMinutes >= 780 || totalMinutes < 600);
+    if (!isInTimeWindow) {
+      return false; // 10:00 - 13:00 休息時間直接關閉
+    }
+
+    // 2. 計算「目標送餐日 (Target Delivery Day)」
+    // 如果當前時間 >= 13:00，代表是在前一天下午下單，送餐日是「明天」((currentDayNum + 1) % 7)
+    // 如果當前時間 < 10:00，代表是在送餐當天清晨下單，送餐日是「今天」(currentDayNum)
+    let targetDeliveryDay = currentDayNum;
+    if (totalMinutes >= 780) {
+      targetDeliveryDay = (currentDayNum + 1) % 7;
+    }
+
+    // 3. 檢查「目標送餐日」是否在群主勾選的允許送餐日中
     if (Array.isArray(STORE_CONFIG.allowedDays) && STORE_CONFIG.allowedDays.length > 0) {
-      if (!STORE_CONFIG.allowedDays.includes(currentDayNum)) {
-        return false; // 不在允許的星期內
+      if (!STORE_CONFIG.allowedDays.includes(targetDeliveryDay)) {
+        return false; // 目標送餐日不在勾選清單內，關閉營業
       }
     }
 
-    // 🌟 預設營業時間（以防萬一）
-    let openMinutes = 13 * 60;   // 13:00
-    let closeMinutes = 10 * 60;  // 次日 10:00
-
-    // 🌟 從後台設定的「營業時間標語」中自動抓取數字（例如抓取 "16:00 - 10:00" 或 "14:00 - 22:00"）
-    const text = STORE_CONFIG.storeHoursText || "";
-    const match = text.match(/(\d{1,2}):(\d{2})\s*-\s*(\d{1,2}):(\d{2})/);
-    if (match) {
-      openMinutes = parseInt(match[1], 10) * 60 + parseInt(match[2], 10);
-      closeMinutes = parseInt(match[3], 10) * 60 + parseInt(match[4], 10);
-    }
-
-    const totalMinutes = hour * 60 + minute;
-
-    // 判斷是否為跨日營業（例如開始時間 16:00 大於結束時間 10:00）
-    if (openMinutes > closeMinutes) {
-      // 跨日邏輯：大於等於開始時間，或者小於結束時間
-      return (totalMinutes >= openMinutes || totalMinutes < closeMinutes);
-    } else {
-      // 一般同日邏輯：介於開始與結束之間
-      return (totalMinutes >= openMinutes && totalMinutes <= closeMinutes);
-    }
-
+    return true; // 時間窗口符合，且目標送餐日有營業！
   } catch (e) {
     console.error('Time check error:', e);
     return true; 
